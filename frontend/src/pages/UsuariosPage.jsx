@@ -137,8 +137,17 @@ export default function UsuariosPage() {
 
       <form className="panel-form" onSubmit={onCrear}>
         <div className="field">
-          <label htmlFor="username">Usuario</label>
-          <input id="username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
+          <label htmlFor="username">Correo institucional</label>
+          <input
+            id="username"
+            type="email"
+            placeholder="nombre.apellido@imssbienestar.gob.mx"
+            pattern=".+@imssbienestar\.gob\.mx"
+            title="Debe ser tu correo institucional (...@imssbienestar.gob.mx)"
+            value={form.username}
+            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            required
+          />
         </div>
         <div className="field">
           <label htmlFor="first_name">Nombre</label>

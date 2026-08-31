@@ -19,11 +19,12 @@ class RutaAdmin(admin.ModelAdmin):
 class ProgramacionVisitaAdmin(admin.ModelAdmin):
     list_display = [
         "unidad_medica",
-        "ruta",
+        "jornada",
+        "ruta_numero",
         "fecha_distribucion_programada",
         "piezas_medicamento",
         "piezas_material_curacion",
         "bloqueada",
     ]
-    list_filter = ["ruta__jornada", "ruta__entidad", "bloqueada"]
+    list_filter = ["jornada", "unidad_medica__entidad", "bloqueada"]
     search_fields = ["unidad_medica__clues", "unidad_medica__nombre"]

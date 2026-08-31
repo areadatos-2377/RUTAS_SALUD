@@ -2,274 +2,250 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { useAuth, ROLES } from '../auth/AuthContext';
-import { NIVELES_POR_CATEGORIA, CATEGORIA_LABEL } from '../utils/categoriaNiveles';
+import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
 import { exportarProgramacionExcel } from '../utils/exportarProgramacionExcel';
+import { exportarPresentacionEvidencia } from '../utils/exportarPresentacionEvidencia';
+import EvidenciaPanel from './EvidenciaPanel';
+import EvidenciaVistaRapida from './EvidenciaVistaRapida';
 import '../styles/table.css';
 import './JornadaDetallePage.css';
 
 const TIPO_LABEL = { ordinaria: 'Ordinaria', extraordinaria: 'Extraordinaria', emergencia: 'Emergencia' };
 
-const CAMPOS_VACIOS_UNIDAD = {
-  clues: '',
-  unidad_medica_nombre: '',
-  tipo_unidad_medica: '',
-  fecha_distribucion_programada: '',
-  claves_a_desplazar: '',
-  piezas_medicamento: '',
-  piezas_material_curacion: '',
-  quien_recibe: '',
-  telefono: '',
-  correo: '',
-};
-
-function agruparPorEntidad(rutas, visitas) {
-  const visitasPorRuta = new Map();
-  for (const v of visitas) {
-    if (!visitasPorRuta.has(v.ruta)) visitasPorRuta.set(v.ruta, []);
-    visitasPorRuta.get(v.ruta).push(v);
-  }
-
-  const porEntidad = new Map();
-  for (const r of rutas) {
-    if (!porEntidad.has(r.entidad_nombre)) porEntidad.set(r.entidad_nombre, []);
-    porEntidad.get(r.entidad_nombre).push({ ...r, visitas: visitasPorRuta.get(r.id) || [] });
-  }
-
-  return [...porEntidad.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([entidad, rutasDeEntidad]) => ({
-      entidad,
-      rutas: rutasDeEntidad.sort((a, b) => a.numero_o_nombre.localeCompare(b.numero_o_nombre)),
-      totalUnidades: rutasDeEntidad.reduce((acc, r) => acc + r.visitas.length, 0),
-    }));
+function valoresEditables(visita) {
+  return {
+    ruta_numero: visita.ruta_numero || '',
+    fecha_distribucion_programada: visita.fecha_distribucion_programada || '',
+    claves_a_desplazar: visita.claves_a_desplazar ?? 0,
+    piezas_medicamento: visita.piezas_medicamento ?? 0,
+    piezas_material_curacion: visita.piezas_material_curacion ?? 0,
+    tipo_unidad_medica: visita.tipo_unidad_medica || '',
+    quien_recibe: visita.quien_recibe || '',
+    telefono: visita.telefono || '',
+    correo: visita.correo || '',
+  };
 }
 
 export default function JornadaDetallePage() {
   const { id } = useParams();
   const { usuario } = useAuth();
-  // usuario_entidad de por si solo ve su propia entidad (el backend ya la
-  // filtra) -- el selector solo tiene sentido para roles que ven varias.
-  const puedeFiltrarEntidad = usuario?.rol !== ROLES.USUARIO_ENTIDAD;
-  // admin_nacional ve todo pero es de solo lectura (PuedeGestionarProgramacion).
   const puedeEscribir = usuario?.rol === ROLES.USUARIO_ENTIDAD || usuario?.rol === ROLES.SUPER_ADMIN;
+  const requiereSelectorEntidad = usuario?.rol !== ROLES.USUARIO_ENTIDAD;
+  const puedeGenerarPresentacion = usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
 
   const [jornada, setJornada] = useState(null);
-  const [grupos, setGrupos] = useState(null);
-  const [filtroEntidad, setFiltroEntidad] = useState('');
-  const [error, setError] = useState(null);
-
-  // ---- Agregar ruta (formulario global, una sola ruta en construcción a la vez) ----
   const [entidades, setEntidades] = useState([]);
-  const [mostrarFormRuta, setMostrarFormRuta] = useState(false);
-  const [formRuta, setFormRuta] = useState({ entidad: '', numero: '' });
-  const [guardandoRuta, setGuardandoRuta] = useState(false);
-  const [errorRuta, setErrorRuta] = useState(null);
-
-  // ---- Agregar unidad a una ruta (una a la vez, catálogo de CLUES cacheado por entidad) ----
-  const [catalogoUnidadesPorEntidad, setCatalogoUnidadesPorEntidad] = useState({});
-  const [rutaAgregandoUnidadId, setRutaAgregandoUnidadId] = useState(null);
-  const [editandoVisitaId, setEditandoVisitaId] = useState(null);
-  const [formUnidad, setFormUnidad] = useState(CAMPOS_VACIOS_UNIDAD);
-  const [autocompletadoUnidad, setAutocompletadoUnidad] = useState(false);
-  const [guardandoUnidad, setGuardandoUnidad] = useState(false);
-  const [errorUnidad, setErrorUnidad] = useState(null);
-
-  // ---- Descargar Excel (solo usuario_entidad) ----
+  const [entidadId, setEntidadId] = useState(
+    usuario?.rol === ROLES.USUARIO_ENTIDAD ? String(usuario.entidad) : '',
+  );
+  const [visitas, setVisitas] = useState(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [error, setError] = useState(null);
+  const [editandoId, setEditandoId] = useState(null);
+  const [formulario, setFormulario] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [errorEdicion, setErrorEdicion] = useState(null);
   const [exportando, setExportando] = useState(false);
-  const [errorExportar, setErrorExportar] = useState(null);
-
-  async function cargarDetalle() {
-    try {
-      const [j, rutas, visitas] = await Promise.all([
-        api.get(`/api/jornadas/${id}/`),
-        api.getAll(`/api/rutas/?jornada=${id}`),
-        api.getAll(`/api/programacion-visitas/?jornada=${id}`),
-      ]);
-      setJornada(j);
-      setGrupos(agruparPorEntidad(rutas, visitas));
-    } catch {
-      setError('No se pudo cargar el detalle de la jornada.');
-    }
-  }
+  const [visitaEvidencia, setVisitaEvidencia] = useState(null);
+  const [vistaRapida, setVistaRapida] = useState(null);
+  const [modoSeleccion, setModoSeleccion] = useState(false);
+  // { [visitaId]: { evidenciaId, urlDescarga, clues, nombreUnidad, entidadNombre } }
+  // -- vive aqui (no en el selector de entidad) para que sobreviva al
+  // cambiar de entidad en el dropdown: se puede ir marcando fotos de
+  // varias entidades antes de generar una sola presentacion con todo.
+  const [fotosSeleccionadas, setFotosSeleccionadas] = useState({});
+  const [generandoPresentacion, setGenerandoPresentacion] = useState(false);
+  const [autoSeleccionando, setAutoSeleccionando] = useState(false);
 
   useEffect(() => {
-    cargarDetalle();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    api.get(`/api/jornadas/${id}/`)
+      .then(setJornada)
+      .catch(() => setError('No se pudo cargar la distribución.'));
   }, [id]);
 
   useEffect(() => {
-    if (usuario?.rol === ROLES.SUPER_ADMIN) {
-      api.getAll('/api/entidades/').then(setEntidades);
-    }
-  }, [usuario]);
+    if (!requiereSelectorEntidad) return;
+    api.getAll('/api/entidades/')
+      .then((lista) => {
+        setEntidades(lista);
+        if (lista.length > 0) setEntidadId((actual) => actual || String(lista[0].id));
+      })
+      .catch(() => setError('No se pudieron cargar las entidades.'));
+  }, [requiereSelectorEntidad]);
 
-  function onAbrirFormRuta() {
-    const entidadPrefiltrada = entidades.find((e) => e.nombre === filtroEntidad);
-    setFormRuta({ entidad: entidadPrefiltrada ? String(entidadPrefiltrada.id) : '', numero: '' });
-    setErrorRuta(null);
-    setMostrarFormRuta(true);
+  useEffect(() => {
+    if (!entidadId) return;
+    setVisitas(null);
+    setError(null);
+    api.getAll(`/api/programacion-visitas/?jornada=${id}&entidad=${entidadId}`)
+      .then(setVisitas)
+      .catch(() => setError('No se pudieron cargar las unidades de la distribución.'));
+  }, [id, entidadId]);
+
+  function onEditar(visita) {
+    setEditandoId(visita.id);
+    setFormulario(valoresEditables(visita));
+    setErrorEdicion(null);
   }
 
-  function onCancelarFormRuta() {
-    setMostrarFormRuta(false);
-    setFormRuta({ entidad: '', numero: '' });
-    setErrorRuta(null);
+  function onCancelarEdicion() {
+    setEditandoId(null);
+    setFormulario(null);
+    setErrorEdicion(null);
   }
 
-  async function onCrearRuta(e) {
+  async function onGuardar(e) {
     e.preventDefault();
-    setGuardandoRuta(true);
-    setErrorRuta(null);
+    setGuardando(true);
+    setErrorEdicion(null);
     try {
-      const cuerpo = { jornada: Number(id), numero_o_nombre: formRuta.numero };
-      if (usuario.rol === ROLES.SUPER_ADMIN) cuerpo.entidad = Number(formRuta.entidad);
-      await api.post('/api/rutas/', cuerpo);
-      setMostrarFormRuta(false);
-      setFormRuta({ entidad: '', numero: '' });
-      await cargarDetalle();
-    } catch {
-      setErrorRuta('No se pudo crear la ruta.');
-    } finally {
-      setGuardandoRuta(false);
-    }
-  }
-
-  async function onEliminarRuta(ruta) {
-    const advertencia = ruta.visitas.length
-      ? `Esto elimina la ruta ${ruta.numero_o_nombre} y sus ${ruta.visitas.length} unidad(es) programada(s). ¿Continuar?`
-      : `¿Eliminar la ruta ${ruta.numero_o_nombre}?`;
-    if (!confirm(advertencia)) return;
-    await api.del(`/api/rutas/${ruta.id}/`);
-    await cargarDetalle();
-  }
-
-  async function cargarCatalogoUnidad(ruta) {
-    if (catalogoUnidadesPorEntidad[ruta.entidad]) return;
-    const nivelesPermitidos = NIVELES_POR_CATEGORIA[ruta.jornada_categoria] || 'PRIMER NIVEL';
-    const params = new URLSearchParams({ entidad: ruta.entidad, nivel_atencion: nivelesPermitidos });
-    const lista = await api.getAll(`/api/unidades-medicas/?${params}`);
-    setCatalogoUnidadesPorEntidad((prev) => ({ ...prev, [ruta.entidad]: lista }));
-  }
-
-  async function onAbrirFormUnidad(ruta) {
-    setRutaAgregandoUnidadId(ruta.id);
-    setEditandoVisitaId(null);
-    setFormUnidad(CAMPOS_VACIOS_UNIDAD);
-    setAutocompletadoUnidad(false);
-    setErrorUnidad(null);
-    await cargarCatalogoUnidad(ruta);
-  }
-
-  async function onEditarUnidad(ruta, visita) {
-    setRutaAgregandoUnidadId(ruta.id);
-    setEditandoVisitaId(visita.id);
-    setAutocompletadoUnidad(true);
-    setErrorUnidad(null);
-    setFormUnidad({
-      clues: visita.unidad_medica,
-      unidad_medica_nombre: visita.unidad_medica_nombre,
-      tipo_unidad_medica: visita.tipo_unidad_medica || '',
-      fecha_distribucion_programada: visita.fecha_distribucion_programada,
-      claves_a_desplazar: visita.claves_a_desplazar,
-      piezas_medicamento: visita.piezas_medicamento,
-      piezas_material_curacion: visita.piezas_material_curacion,
-      quien_recibe: visita.quien_recibe || '',
-      telefono: visita.telefono || '',
-      correo: visita.correo || '',
-    });
-    await cargarCatalogoUnidad(ruta);
-  }
-
-  function onCancelarFormUnidad() {
-    setRutaAgregandoUnidadId(null);
-    setEditandoVisitaId(null);
-    setFormUnidad(CAMPOS_VACIOS_UNIDAD);
-    setAutocompletadoUnidad(false);
-    setErrorUnidad(null);
-  }
-
-  function onCluesChangeUnidad(ruta, valorInput) {
-    const clues = valorInput.includes(' · ') ? valorInput.split(' · ')[0].trim() : valorInput.trim();
-    const unidades = catalogoUnidadesPorEntidad[ruta.entidad] || [];
-    const unidad = unidades.find((u) => u.clues === clues);
-    if (unidad) {
-      setFormUnidad((f) => ({
-        ...f,
-        clues,
-        unidad_medica_nombre: unidad.nombre,
-        tipo_unidad_medica: unidad.tipo_unidad_medica || '',
-      }));
-      setAutocompletadoUnidad(true);
-    } else {
-      setFormUnidad((f) => ({ ...f, clues }));
-      setAutocompletadoUnidad(false);
-    }
-  }
-
-  async function onGuardarUnidad(e, ruta) {
-    e.preventDefault();
-    setGuardandoUnidad(true);
-    setErrorUnidad(null);
-    const cuerpo = {
-      ruta: ruta.id,
-      unidad_medica: formUnidad.clues,
-      fecha_distribucion_programada: formUnidad.fecha_distribucion_programada,
-      claves_a_desplazar: Number(formUnidad.claves_a_desplazar) || 0,
-      piezas_medicamento: Number(formUnidad.piezas_medicamento) || 0,
-      piezas_material_curacion: Number(formUnidad.piezas_material_curacion) || 0,
-      tipo_unidad_medica: formUnidad.tipo_unidad_medica,
-      quien_recibe: formUnidad.quien_recibe,
-      telefono: formUnidad.telefono,
-      correo: formUnidad.correo,
-    };
-    try {
-      if (editandoVisitaId) {
-        await api.patch(`/api/programacion-visitas/${editandoVisitaId}/`, cuerpo);
-      } else {
-        await api.post('/api/programacion-visitas/', cuerpo);
-      }
-      onCancelarFormUnidad();
-      await cargarDetalle();
+      const cuerpo = {
+        ...formulario,
+        fecha_distribucion_programada: formulario.fecha_distribucion_programada || null,
+        claves_a_desplazar: Number(formulario.claves_a_desplazar) || 0,
+        piezas_medicamento: Number(formulario.piezas_medicamento) || 0,
+        piezas_material_curacion: Number(formulario.piezas_material_curacion) || 0,
+      };
+      const actualizada = await api.patch(`/api/programacion-visitas/${editandoId}/`, cuerpo);
+      setVisitas((actuales) => actuales.map((visita) => (
+        visita.id === actualizada.id ? actualizada : visita
+      )));
+      onCancelarEdicion();
     } catch (err) {
-      if (err instanceof ApiError && err.data) {
-        const mensaje = err.data.non_field_errors?.[0] || err.data.detail || JSON.stringify(err.data);
-        setErrorUnidad(mensaje);
-      } else {
-        setErrorUnidad('No se pudo guardar la unidad.');
-      }
+      const detalle = err instanceof ApiError && err.data
+        ? err.data.non_field_errors?.[0] || err.data.detail
+        : null;
+      setErrorEdicion(detalle || 'No se pudieron guardar los cambios.');
     } finally {
-      setGuardandoUnidad(false);
+      setGuardando(false);
     }
   }
 
-  async function onEliminarUnidad(visitaId) {
-    if (!confirm('¿Eliminar esta unidad programada?')) return;
-    await api.del(`/api/programacion-visitas/${visitaId}/`);
-    await cargarDetalle();
+  async function onEliminar(visita) {
+    if (!confirm(`¿Eliminar ${visita.unidad_medica} de esta distribución?`)) return;
+    try {
+      await api.del(`/api/programacion-visitas/${visita.id}/`);
+      setVisitas((actuales) => actuales.filter((fila) => fila.id !== visita.id));
+      if (editandoId === visita.id) onCancelarEdicion();
+    } catch {
+      setError('No se pudo eliminar la unidad de la distribución.');
+    }
   }
 
   async function onExportar() {
     setExportando(true);
-    setErrorExportar(null);
     try {
-      // getAll aqui es obligatorio: un Excel de cumplimiento que le faltaran
-      // filas por paginacion silenciosa seria un problema serio, no solo un
-      // detalle de UX.
-      const [entidad, visitas] = await Promise.all([
-        api.get(`/api/entidades/${usuario.entidad}/`),
-        api.getAll(`/api/programacion-visitas/?jornada=${id}`),
-      ]);
+      const entidad = await api.get(`/api/entidades/${entidadId}/`);
       await exportarProgramacionExcel({ jornada, entidad, visitas });
     } catch {
-      setErrorExportar('No se pudo generar el Excel.');
+      setError('No se pudo generar el Excel.');
     } finally {
       setExportando(false);
     }
   }
 
+  function onSeleccionarFoto(visita, evidencia) {
+    setFotosSeleccionadas((actuales) => {
+      const yaEsEsta = actuales[visita.id]?.evidenciaId === evidencia.id;
+      const copia = { ...actuales };
+      if (yaEsEsta) {
+        // Volver a dar clic en la misma foto la desmarca.
+        delete copia[visita.id];
+      } else {
+        copia[visita.id] = {
+          evidenciaId: evidencia.id,
+          urlDescarga: evidencia.url_descarga,
+          clues: visita.unidad_medica,
+          nombreUnidad: visita.unidad_medica_nombre,
+          entidadNombre: visita.unidad_medica_entidad_nombre,
+        };
+      }
+      return copia;
+    });
+  }
+
+  // Marcar foto por foto seria muy tedioso con muchas unidades -- al entrar
+  // en modo seleccion (o cambiar de entidad estando ya en ese modo) se
+  // elige sola la primera imagen de cada unidad que ya tenga fotos (la mas
+  // reciente, es la que ya se ve primero en cualquier lista -- ver
+  // EvidenciaArchivo.Meta.ordering). El usuario sigue pudiendo dar clic en
+  // el marcador de una unidad puntual para cambiar cual foto se usa.
+  useEffect(() => {
+    if (!modoSeleccion || !visitas) return;
+    const pendientes = visitas.filter((v) => v.tiene_evidencia_imagen && !fotosSeleccionadas[v.id]);
+    if (pendientes.length === 0) return;
+
+    let cancelado = false;
+    setAutoSeleccionando(true);
+    Promise.all(
+      pendientes.map(async (visita) => {
+        try {
+          const entregas = await api.getAll(`/api/entregas/?programacion_visita=${visita.id}`);
+          const primeraImagen = entregas[0]?.evidencias?.find((ev) => ev.tipo === 'foto');
+          return primeraImagen ? { visita, evidencia: primeraImagen } : null;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((resultados) => {
+      if (cancelado) return;
+      setFotosSeleccionadas((actuales) => {
+        const copia = { ...actuales };
+        for (const r of resultados) {
+          if (!r || copia[r.visita.id]) continue; // no pisar una seleccion manual hecha mientras cargaba
+          copia[r.visita.id] = {
+            evidenciaId: r.evidencia.id,
+            urlDescarga: r.evidencia.url_descarga,
+            clues: r.visita.unidad_medica,
+            nombreUnidad: r.visita.unidad_medica_nombre,
+            entidadNombre: r.visita.unidad_medica_entidad_nombre,
+          };
+        }
+        return copia;
+      });
+      setAutoSeleccionando(false);
+    });
+
+    return () => { cancelado = true; };
+    // fotosSeleccionadas se lee pero NO debe disparar este effect de nuevo
+    // (el propio efecto la actualiza -- entraria en loop). Solo debe correr
+    // al entrar a modo seleccion o al cargar una nueva lista de visitas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modoSeleccion, visitas]);
+
+  async function onGenerarPresentacion() {
+    setGenerandoPresentacion(true);
+    setError(null);
+    try {
+      await exportarPresentacionEvidencia({ jornada, fotos: Object.values(fotosSeleccionadas) });
+      setFotosSeleccionadas({});
+      setModoSeleccion(false);
+    } catch {
+      setError('No se pudo generar la presentación.');
+    } finally {
+      setGenerandoPresentacion(false);
+    }
+  }
+
+  const termino = busqueda.trim().toLocaleLowerCase('es');
+  const filasVisibles = visitas?.filter((visita) => {
+    if (!termino) return true;
+    return [
+      visita.unidad_medica,
+      visita.unidad_medica_nombre,
+      visita.unidad_medica_municipio,
+      visita.ruta_numero,
+    ].some((valor) => String(valor || '').toLocaleLowerCase('es').includes(termino));
+  });
+
+  const entidadSeleccionada = entidades.find((entidad) => String(entidad.id) === entidadId);
+  const nombreEntidad = usuario?.rol === ROLES.USUARIO_ENTIDAD
+    ? visitas?.[0]?.unidad_medica_entidad_nombre
+    : entidadSeleccionada?.nombre;
+
   return (
     <div>
-      <div className="topbar">
+      <div className="topbar jornada-topbar">
         <div>
           <p className="crumb">
             <Link to="/jornadas">Distribuciones</Link>
@@ -285,272 +261,230 @@ export default function JornadaDetallePage() {
             </p>
           )}
         </div>
-        {jornada && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-            {usuario?.rol === ROLES.USUARIO_ENTIDAD && (
-              <button className="btn-ghost" onClick={onExportar} disabled={exportando}>
-                {exportando ? 'Generando…' : 'Descargar Excel'}
+        {usuario?.rol === ROLES.USUARIO_ENTIDAD && visitas && (
+          <button className="btn-ghost" onClick={onExportar} disabled={exportando}>
+            {exportando ? 'Generando…' : 'Descargar Excel'}
+          </button>
+        )}
+        {puedeGenerarPresentacion && visitas && (
+          <div className="jornada-topbar__presentacion">
+            {modoSeleccion && (
+              <span className="jornada-topbar__contador">
+                {autoSeleccionando && 'Eligiendo fotos… · '}
+                {Object.keys(fotosSeleccionadas).length} foto{Object.keys(fotosSeleccionadas).length === 1 ? '' : 's'} elegida{Object.keys(fotosSeleccionadas).length === 1 ? '' : 's'}
+              </span>
+            )}
+            {modoSeleccion && Object.keys(fotosSeleccionadas).length > 0 && (
+              <button className="btn-primary" onClick={onGenerarPresentacion} disabled={generandoPresentacion}>
+                {generandoPresentacion ? 'Generando…' : 'Generar presentación'}
               </button>
             )}
-            {puedeEscribir && !mostrarFormRuta && (
-              <button className="btn-primary" onClick={onAbrirFormRuta}>
-                + Agregar ruta
-              </button>
-            )}
+            <button className="btn-ghost" onClick={() => setModoSeleccion((actual) => !actual)}>
+              {modoSeleccion ? 'Cancelar selección' : 'Generar presentación'}
+            </button>
           </div>
         )}
       </div>
-      {errorExportar && <p className="login-error" style={{ maxWidth: 400 }}>{errorExportar}</p>}
 
-      {mostrarFormRuta && (
-        <form className="panel-form" onSubmit={onCrearRuta}>
-          {usuario.rol === ROLES.SUPER_ADMIN && (
-            <div className="field">
-              <label htmlFor="formRutaEntidad">Entidad</label>
-              <select
-                id="formRutaEntidad"
-                value={formRuta.entidad}
-                onChange={(e) => setFormRuta({ ...formRuta, entidad: e.target.value })}
-                required
-              >
-                <option value="">Selecciona…</option>
-                {entidades.map((e) => (
-                  <option key={e.id} value={e.id}>{e.nombre}</option>
-                ))}
-              </select>
-            </div>
-          )}
+      <div className="jornada-controles">
+        {requiereSelectorEntidad && (
           <div className="field">
-            <label htmlFor="formRutaNumero">Número o nombre de ruta</label>
-            <input
-              id="formRutaNumero"
-              value={formRuta.numero}
-              onChange={(e) => setFormRuta({ ...formRuta, numero: e.target.value })}
-              required
-            />
-          </div>
-          <button className="btn-primary" type="submit" disabled={guardandoRuta}>
-            {guardandoRuta ? 'Creando…' : 'Guardar ruta'}
-          </button>
-          <button className="btn-ghost" type="button" onClick={onCancelarFormRuta}>
-            Cancelar
-          </button>
-        </form>
-      )}
-      {errorRuta && <p className="login-error" style={{ maxWidth: 400 }}>{errorRuta}</p>}
-
-      {puedeFiltrarEntidad && grupos?.length > 0 && (
-        <div className="panel-form">
-          <div className="field">
-            <label htmlFor="filtroEntidad">Entidad</label>
-            <select id="filtroEntidad" value={filtroEntidad} onChange={(e) => setFiltroEntidad(e.target.value)}>
-              <option value="">Todas ({grupos.length})</option>
-              {grupos.map((g) => (
-                <option key={g.entidad} value={g.entidad}>{g.entidad}</option>
+            <label htmlFor="entidad">Entidad</label>
+            <select id="entidad" value={entidadId} onChange={(e) => setEntidadId(e.target.value)}>
+              {entidades.map((entidad) => (
+                <option key={entidad.id} value={entidad.id}>{entidad.nombre}</option>
               ))}
             </select>
           </div>
+        )}
+        <div className="field jornada-busqueda">
+          <label htmlFor="busqueda">Buscar unidad</label>
+          <input
+            id="busqueda"
+            type="search"
+            placeholder="CLUES, nombre, municipio o ruta"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
         </div>
-      )}
-
-      {error && <p className="login-error" style={{ maxWidth: 400 }}>{error}</p>}
-
-      {grupos === null && !error && <p style={{ color: 'var(--gray-tx)', fontSize: 13.5 }}>Cargando…</p>}
-
-      {grupos?.length === 0 && (
-        <p style={{ color: 'var(--gray-tx)', fontSize: 13.5 }}>
-          Todavía ninguna entidad ha capturado rutas para esta jornada.
+        <p className="jornada-conteo">
+          {filasVisibles?.length ?? 0} de {visitas?.length ?? 0} unidades
+          {nombreEntidad ? ` · ${nombreEntidad}` : ''}
         </p>
+      </div>
+
+      {error && <p className="login-error" style={{ maxWidth: 520 }}>{error}</p>}
+      {visitas === null && !error && <p className="tabla-cargando">Cargando unidades…</p>}
+
+      {editandoId && formulario && (
+        <form className="panel-form jornada-editor" onSubmit={onGuardar}>
+          <div className="jornada-editor__unidad">
+            <span>{visitas.find((visita) => visita.id === editandoId)?.unidad_medica}</span>
+            <strong>{visitas.find((visita) => visita.id === editandoId)?.unidad_medica_nombre}</strong>
+          </div>
+          <div className="field">
+            <label htmlFor="rutaNumero">Ruta</label>
+            <input id="rutaNumero" value={formulario.ruta_numero} onChange={(e) => setFormulario({ ...formulario, ruta_numero: e.target.value })} />
+          </div>
+          <div className="field">
+            <label htmlFor="fechaProgramada">Fecha programada</label>
+            <input id="fechaProgramada" type="date" min={jornada?.fecha_inicio} max={jornada?.fecha_fin} value={formulario.fecha_distribucion_programada} onChange={(e) => setFormulario({ ...formulario, fecha_distribucion_programada: e.target.value })} />
+          </div>
+          <div className="field field-numero">
+            <label htmlFor="claves">Claves</label>
+            <input id="claves" type="number" min="0" value={formulario.claves_a_desplazar} onChange={(e) => setFormulario({ ...formulario, claves_a_desplazar: e.target.value })} />
+          </div>
+          <div className="field field-numero">
+            <label htmlFor="medicamento">Piezas medicamento</label>
+            <input id="medicamento" type="number" min="0" value={formulario.piezas_medicamento} onChange={(e) => setFormulario({ ...formulario, piezas_medicamento: e.target.value })} />
+          </div>
+          <div className="field field-numero">
+            <label htmlFor="material">Piezas material</label>
+            <input id="material" type="number" min="0" value={formulario.piezas_material_curacion} onChange={(e) => setFormulario({ ...formulario, piezas_material_curacion: e.target.value })} />
+          </div>
+          <div className="field">
+            <label htmlFor="tipoUnidad">Tipo de unidad</label>
+            <input id="tipoUnidad" value={formulario.tipo_unidad_medica} disabled title="Viene del catálogo de unidades médicas, no se puede editar aquí" />
+          </div>
+          <div className="field">
+            <label htmlFor="recibe">¿Quién recibe?</label>
+            <input id="recibe" value={formulario.quien_recibe} onChange={(e) => setFormulario({ ...formulario, quien_recibe: e.target.value })} />
+          </div>
+          <div className="field">
+            <label htmlFor="telefono">Teléfono</label>
+            <input id="telefono" value={formulario.telefono} onChange={(e) => setFormulario({ ...formulario, telefono: e.target.value })} />
+          </div>
+          <div className="field">
+            <label htmlFor="correo">Correo</label>
+            <input id="correo" type="email" value={formulario.correo} onChange={(e) => setFormulario({ ...formulario, correo: e.target.value })} />
+          </div>
+          <div className="jornada-editor__actions">
+            <button className="btn-primary" type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
+            <button className="btn-ghost" type="button" onClick={onCancelarEdicion}>Cancelar</button>
+          </div>
+          {errorEdicion && <p className="login-error">{errorEdicion}</p>}
+        </form>
       )}
 
-      {grupos
-        ?.filter((g) => !filtroEntidad || g.entidad === filtroEntidad)
-        .map((grupo) => (
-        <div key={grupo.entidad} className="entidad-group">
-          <div className="entidad-group__header">
-            <h3>{grupo.entidad}</h3>
-            <span className="entidad-group__meta">
-              {grupo.rutas.length} {grupo.rutas.length === 1 ? 'ruta' : 'rutas'} · {grupo.totalUnidades}{' '}
-              {grupo.totalUnidades === 1 ? 'unidad programada' : 'unidades programadas'}
-            </span>
-          </div>
-
-          {grupo.rutas.map((ruta) => (
-            <div key={ruta.id} className="ruta-block">
-              <div className="ruta-block__header">
-                <span className="nombre">Ruta {ruta.numero_o_nombre}</span>
-                <span className="ruta-block__meta">
-                  {ruta.visitas.length} {ruta.visitas.length === 1 ? 'unidad' : 'unidades'}
-                </span>
-                {puedeEscribir && (
-                  <>
-                    <button className="btn-ghost" onClick={() => onAbrirFormUnidad(ruta)}>
-                      + Agregar unidad
-                    </button>
-                    <button className="btn-ghost" onClick={() => onEliminarRuta(ruta)}>
-                      Eliminar ruta
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {rutaAgregandoUnidadId === ruta.id && (
-                <form
-                  className="panel-form"
-                  onSubmit={(e) => onGuardarUnidad(e, ruta)}
-                  style={{ flexWrap: 'wrap', marginLeft: 4 }}
-                >
-                  <div className="field" style={{ minWidth: 220 }}>
-                    <label htmlFor={`clues-${ruta.id}`}>CLUES</label>
-                    <input
-                      id={`clues-${ruta.id}`}
-                      list={`datalist-clues-${ruta.id}`}
-                      placeholder="Busca por CLUES o nombre…"
-                      value={autocompletadoUnidad ? `${formUnidad.clues} · ${formUnidad.unidad_medica_nombre}` : formUnidad.clues}
-                      onChange={(e) => onCluesChangeUnidad(ruta, e.target.value)}
-                      disabled={Boolean(editandoVisitaId)}
-                      required
-                    />
-                    <datalist id={`datalist-clues-${ruta.id}`}>
-                      {(catalogoUnidadesPorEntidad[ruta.entidad] || []).map((u) => (
-                        <option key={u.clues} value={`${u.clues} · ${u.nombre}`} />
-                      ))}
-                    </datalist>
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`fecha-${ruta.id}`}>Fecha programada</label>
-                    <input
-                      id={`fecha-${ruta.id}`}
-                      type="date"
-                      value={formUnidad.fecha_distribucion_programada}
-                      onChange={(e) => setFormUnidad({ ...formUnidad, fecha_distribucion_programada: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="field" style={{ maxWidth: 130 }}>
-                    <label htmlFor={`claves-${ruta.id}`}>Claves a desplazar</label>
-                    <input
-                      id={`claves-${ruta.id}`}
-                      type="number"
-                      min="0"
-                      value={formUnidad.claves_a_desplazar}
-                      onChange={(e) => setFormUnidad({ ...formUnidad, claves_a_desplazar: e.target.value })}
-                    />
-                  </div>
-                  <div className="field" style={{ maxWidth: 150 }}>
-                    <label htmlFor={`med-${ruta.id}`}>Piezas medicamento</label>
-                    <input
-                      id={`med-${ruta.id}`}
-                      type="number"
-                      min="0"
-                      value={formUnidad.piezas_medicamento}
-                      onChange={(e) => setFormUnidad({ ...formUnidad, piezas_medicamento: e.target.value })}
-                    />
-                  </div>
-                  <div className="field" style={{ maxWidth: 150 }}>
-                    <label htmlFor={`mat-${ruta.id}`}>Piezas material curación</label>
-                    <input
-                      id={`mat-${ruta.id}`}
-                      type="number"
-                      min="0"
-                      value={formUnidad.piezas_material_curacion}
-                      onChange={(e) => setFormUnidad({ ...formUnidad, piezas_material_curacion: e.target.value })}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`recibe-${ruta.id}`}>¿Quién recibe?</label>
-                    <input
-                      id={`recibe-${ruta.id}`}
-                      value={formUnidad.quien_recibe}
-                      onChange={(e) => setFormUnidad({ ...formUnidad, quien_recibe: e.target.value })}
-                    />
-                  </div>
-                  <div className="field" style={{ maxWidth: 140 }}>
-                    <label htmlFor={`tel-${ruta.id}`}>Teléfono</label>
-                    <input
-                      id={`tel-${ruta.id}`}
-                      value={formUnidad.telefono}
-                      onChange={(e) => setFormUnidad({ ...formUnidad, telefono: e.target.value })}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`correo-${ruta.id}`}>Correo</label>
-                    <input
-                      id={`correo-${ruta.id}`}
-                      type="email"
-                      value={formUnidad.correo}
-                      onChange={(e) => setFormUnidad({ ...formUnidad, correo: e.target.value })}
-                    />
-                  </div>
-                  <button className="btn-primary" type="submit" disabled={guardandoUnidad}>
-                    {guardandoUnidad ? 'Guardando…' : editandoVisitaId ? 'Guardar cambios' : '+ Agregar'}
-                  </button>
-                  <button className="btn-ghost" type="button" onClick={onCancelarFormUnidad}>
-                    Cancelar
-                  </button>
-                </form>
+      {filasVisibles && (
+        <div className="tablewrap jornada-tabla">
+          <table>
+            <thead>
+              <tr>
+                <th>CLUES</th>
+                <th>Nombre de la unidad</th>
+                <th>Municipio</th>
+                <th>Tipo de unidad</th>
+                <th>Ruta</th>
+                <th>Fecha programada</th>
+                <th>Claves</th>
+                <th>Pzas. medicamento</th>
+                <th>Pzas. material</th>
+                <th>Recibe</th>
+                <th>Teléfono</th>
+                <th>Correo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filasVisibles.length === 0 && (
+                <tr><td colSpan={13} className="tabla-vacia">No hay unidades que coincidan.</td></tr>
               )}
-              {errorUnidad && rutaAgregandoUnidadId === ruta.id && (
-                <p className="login-error" style={{ maxWidth: 500, marginLeft: 4 }}>{errorUnidad}</p>
-              )}
-
-              {ruta.visitas.length === 0 ? (
-                <p className="ruta-block__vacio">Sin unidades programadas todavía.</p>
-              ) : (
-                <div className="tablewrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Fecha de distribución programada</th>
-                        <th>Rutas</th>
-                        <th>CLUES</th>
-                        <th>Nombre de la unidad</th>
-                        <th>Claves a desplazar</th>
-                        <th>Piezas de medicamento</th>
-                        <th>Piezas de material de curación</th>
-                        <th>Tipo de unidad médica</th>
-                        <th>¿Quién recibe en unidad?</th>
-                        <th>Teléfono</th>
-                        <th>Correo</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ruta.visitas.map((v) => (
-                        <tr key={v.id}>
-                          <td>{v.fecha_distribucion_programada}</td>
-                          <td>{v.ruta_numero}</td>
-                          <td>{v.unidad_medica}</td>
-                          <td className="nombre">{v.unidad_medica_nombre}</td>
-                          <td>{v.claves_a_desplazar}</td>
-                          <td>{v.piezas_medicamento}</td>
-                          <td>{v.piezas_material_curacion}</td>
-                          <td>{v.tipo_unidad_medica}</td>
-                          <td>{v.quien_recibe}</td>
-                          <td>{v.telefono}</td>
-                          <td>{v.correo}</td>
-                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {puedeEscribir && (
-                              <>
-                                <button className="btn-ghost" onClick={() => onEditarUnidad(ruta, v)} style={{ marginRight: 6 }}>
-                                  Editar
-                                </button>
-                                <button className="btn-ghost" onClick={() => onEliminarUnidad(v.id)}>
-                                  Eliminar
-                                </button>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          ))}
+              {filasVisibles.map((visita) => (
+                <tr key={visita.id} className={editandoId === visita.id ? 'fila-editando' : ''}>
+                  <td>{visita.unidad_medica}</td>
+                  <td className="nombre">{visita.unidad_medica_nombre}</td>
+                  <td>{visita.unidad_medica_municipio || '—'}</td>
+                  <td>{visita.tipo_unidad_medica || '—'}</td>
+                  <td>{visita.ruta_numero || 'Pendiente'}</td>
+                  <td>{visita.fecha_distribucion_programada || 'Pendiente'}</td>
+                  <td>{visita.claves_a_desplazar}</td>
+                  <td>{visita.piezas_medicamento}</td>
+                  <td>{visita.piezas_material_curacion}</td>
+                  <td>{visita.quien_recibe || '—'}</td>
+                  <td>{visita.telefono || '—'}</td>
+                  <td>{visita.correo || '—'}</td>
+                  <td className="jornada-acciones">
+                    {/* Marcadores: visibles para cualquiera que llegue a esta tabla
+                        (incluye admin_nacional, que no puede editar pero si elegir
+                        fotos para la presentacion) -- Evidencia/Editar/Eliminar
+                        siguen abajo, solo para quien puede escribir. */}
+                    {(visita.ruta_numero || visita.fecha_distribucion_programada) && (
+                      <>
+                        {visita.tiene_evidencia_imagen && (
+                          <button
+                            className={`jornada-marcador${fotosSeleccionadas[visita.id] ? ' jornada-marcador--seleccionada' : ''}`}
+                            title={modoSeleccion ? 'Elegir foto para la presentación' : 'Ver imágenes subidas'}
+                            onClick={() => setVistaRapida({ visita, categoria: 'imagen' })}
+                          >
+                            🖼️
+                          </button>
+                        )}
+                        {visita.tiene_evidencia_documento && (
+                          <button
+                            className="jornada-marcador"
+                            title="Ver documentos subidos"
+                            onClick={() => setVistaRapida({ visita, categoria: 'documento' })}
+                          >
+                            📄
+                          </button>
+                        )}
+                        {visita.tiene_evidencia_video && (
+                          <button
+                            className="jornada-marcador"
+                            title="Ver video subido"
+                            onClick={() => setVistaRapida({ visita, categoria: 'video' })}
+                          >
+                            🎞️
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {puedeEscribir && (
+                      <>
+                        {/* Evidencia solo tiene sentido si ya hay algo capturado -- no en
+                            las miles de filas precargadas todavia vacias. */}
+                        {(visita.ruta_numero || visita.fecha_distribucion_programada) && (
+                          <button className="btn-ghost" onClick={() => setVisitaEvidencia(visita)}>Evidencia</button>
+                        )}
+                        <button className="btn-ghost" onClick={() => onEditar(visita)}>Editar</button>
+                        <button className="btn-ghost" onClick={() => onEliminar(visita)}>Eliminar</button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ))}
+      )}
+
+      {visitaEvidencia && (
+        <EvidenciaPanel
+          visita={visitaEvidencia}
+          onCerrar={(resumen) => {
+            // Los marcadores de la fila (visitas del listado) vienen de una
+            // carga que ya paso -- sin esto, subir evidencia y cerrar el
+            // panel no los actualizaba hasta recargar toda la pagina.
+            if (resumen) {
+              setVisitas((actual) =>
+                actual.map((v) => (v.id === visitaEvidencia.id ? { ...v, ...resumen } : v)),
+              );
+            }
+            setVisitaEvidencia(null);
+          }}
+        />
+      )}
+      {vistaRapida && (
+        <EvidenciaVistaRapida
+          visita={vistaRapida.visita}
+          categoria={vistaRapida.categoria}
+          onCerrar={() => setVistaRapida(null)}
+          seleccionable={modoSeleccion && vistaRapida.categoria === 'imagen'}
+          seleccionActualId={fotosSeleccionadas[vistaRapida.visita.id]?.evidenciaId ?? null}
+          onSeleccionar={(evidencia) => onSeleccionarFoto(vistaRapida.visita, evidencia)}
+        />
+      )}
     </div>
   );
 }

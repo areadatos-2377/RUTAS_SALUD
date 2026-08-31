@@ -32,7 +32,7 @@ export default function JornadasPage() {
     try {
       setJornadas(await api.getAll('/api/jornadas/'));
     } catch {
-      setError('No se pudieron cargar las jornadas.');
+      setError('No se pudieron cargar las distribuciones.');
     }
   }
 
@@ -85,12 +85,18 @@ export default function JornadasPage() {
   }
 
   async function onEliminar(j) {
-    const advertencia =
-      j.rutas_count > 0
-        ? `"${j.nombre}" tiene ${j.rutas_count} ${j.rutas_count === 1 ? 'ruta' : 'rutas'} y ${j.visitas_count} ` +
-          `${j.visitas_count === 1 ? 'unidad programada' : 'unidades programadas'}. Eliminarla borra TODO lo capturado ` +
-          'en esta distribución, sin poder deshacerlo. ¿Continuar?'
-        : `¿Eliminar la distribución "${j.nombre}"?`;
+    // rutas_count/visitas_count cuentan solo datos ya capturados de verdad
+    // (no las miles de filas precargadas vacias que trae toda jornada) --
+    // ver JornadaSerializer.get_visitas_count.
+    const partes = [];
+    if (j.rutas_count > 0) partes.push(`${j.rutas_count} ${j.rutas_count === 1 ? 'ruta' : 'rutas'}`);
+    if (j.visitas_count > 0) {
+      partes.push(`${j.visitas_count} ${j.visitas_count === 1 ? 'unidad capturada' : 'unidades capturadas'}`);
+    }
+    const advertencia = partes.length
+      ? `"${j.nombre}" tiene ${partes.join(' y ')}. Eliminarla borra TODO lo capturado en esta distribución, ` +
+        'sin poder deshacerlo. ¿Continuar?'
+      : `¿Eliminar la distribución "${j.nombre}"?`;
     if (!confirm(advertencia)) return;
     try {
       await api.del(`/api/jornadas/${j.id}/`);
@@ -210,7 +216,7 @@ export default function JornadasPage() {
               <tr><td colSpan={7} className="tabla-vacia">Cargando…</td></tr>
             )}
             {jornadas?.length === 0 && (
-              <tr><td colSpan={7} className="tabla-vacia">Todavía no hay jornadas.</td></tr>
+              <tr><td colSpan={7} className="tabla-vacia">Todavía no hay distribuciones.</td></tr>
             )}
             {jornadas?.map((j) => (
               <tr key={j.id}>
@@ -234,7 +240,7 @@ export default function JornadasPage() {
                     </>
                   )}
                   <Link className="btn-ghost" to={`/jornadas/${j.id}`}>
-                    Ver rutas y unidades
+                    Ver unidades
                   </Link>
                 </td>
               </tr>

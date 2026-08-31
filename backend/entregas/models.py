@@ -40,10 +40,15 @@ class EvidenciaArchivo(models.Model):
 
     entrega = models.ForeignKey(Entrega, on_delete=models.CASCADE, related_name="evidencias")
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
-    # Backend de almacenamiento (object storage vs filesystem) sin decidir todavia
-    # (blueprint-v01.md seccion 9, pendiente #3). FileField con storage default por
-    # ahora; cuando se decida, cambia el STORAGES de settings, no este modelo.
-    archivo = models.FileField(upload_to="evidencias/%Y/%m/")
+    # Almacenamiento: Cloudflare R2 (compatible S3), decidido 2026-08-28
+    # (blueprint-v01.md seccion 9, pendiente #3 -- resuelto). Solo se guarda
+    # la key del objeto, nunca el archivo en la base ni en disco del
+    # contenedor (Railway lo borra en cada deploy) -- ver entregas/storage.py.
+    ruta_almacen = models.CharField(max_length=500)
+    nombre_original = models.CharField(max_length=255)
+    subido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="evidencias_subidas"
+    )
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:

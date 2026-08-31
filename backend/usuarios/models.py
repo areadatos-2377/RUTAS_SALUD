@@ -1,8 +1,12 @@
+import re
+
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
 
 from catalogos.models import Entidad
+
+USERNAME_INSTITUCIONAL = re.compile(r"^[^@\s]+@imssbienestar\.gob\.mx$", re.IGNORECASE)
 
 
 class Usuario(AbstractUser):
@@ -31,6 +35,13 @@ class Usuario(AbstractUser):
             raise ValidationError("Un usuario_entidad debe tener una entidad asignada.")
         if self.rol != self.ROL_USUARIO_ENTIDAD and self.entidad_id is not None:
             raise ValidationError("Solo un usuario_entidad puede tener entidad asignada.")
+        # Las cuentas se identifican con el correo institucional, no un alias
+        # libre -- mas facil de recordar/verificar que quien entra es quien
+        # dice ser, y evita choques de nombre entre personas.
+        if self.username and not USERNAME_INSTITUCIONAL.match(self.username):
+            raise ValidationError(
+                {"username": "El usuario debe ser tu correo institucional (...@imssbienestar.gob.mx)."}
+            )
 
     def __str__(self):
         return self.get_full_name() or self.username

@@ -1,4 +1,3 @@
-from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from catalogos.models import Entidad
@@ -32,7 +31,15 @@ class JornadaSerializer(serializers.ModelSerializer):
         return obj.rutas.count()
 
     def get_visitas_count(self, obj):
-        return ProgramacionVisita.objects.filter(ruta__jornada=obj).count()
+        # Las unidades se precargan TODAS (miles) al crear la jornada -- contar
+        # esas filas crudas haria que la advertencia de borrado dijera "tiene
+        # 10,136 unidades programadas" aunque nadie haya capturado nada de
+        # verdad. Cuenta solo las que ya tienen algo capturado (ruta o fecha).
+        return (
+            ProgramacionVisita.objects.filter(jornada=obj)
+            .exclude(ruta_numero="", fecha_distribucion_programada__isnull=True)
+            .count()
+        )
 
 
 class RutaSerializer(serializers.ModelSerializer):
@@ -59,16 +66,38 @@ class RutaSerializer(serializers.ModelSerializer):
 
 class ProgramacionVisitaSerializer(serializers.ModelSerializer):
     unidad_medica_nombre = serializers.CharField(source="unidad_medica.nombre", read_only=True)
-    ruta_numero = serializers.CharField(source="ruta.numero_o_nombre", read_only=True)
+    unidad_medica_entidad = serializers.IntegerField(
+        source="unidad_medica.entidad_id", read_only=True
+    )
+    unidad_medica_entidad_nombre = serializers.CharField(
+        source="unidad_medica.entidad.nombre", read_only=True
+    )
+    unidad_medica_municipio = serializers.CharField(
+        source="unidad_medica.municipio", read_only=True
+    )
+    unidad_medica_nivel = serializers.CharField(
+        source="unidad_medica.nivel_atencion", read_only=True
+    )
+    # Anotados en ProgramacionVisitaViewSet.get_queryset() (Exists subqueries
+    # sobre EvidenciaArchivo) -- para pintar los marcadores de evidencia en la
+    # tabla sin una consulta aparte por fila.
+    tiene_evidencia_imagen = serializers.BooleanField(read_only=True)
+    tiene_evidencia_documento = serializers.BooleanField(read_only=True)
+    tiene_evidencia_video = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ProgramacionVisita
         fields = [
             "id",
+            "jornada",
             "ruta",
             "ruta_numero",
             "unidad_medica",
             "unidad_medica_nombre",
+            "unidad_medica_entidad",
+            "unidad_medica_entidad_nombre",
+            "unidad_medica_municipio",
+            "unidad_medica_nivel",
             "fecha_distribucion_programada",
             "claves_a_desplazar",
             "piezas_medicamento",
@@ -78,33 +107,24 @@ class ProgramacionVisitaSerializer(serializers.ModelSerializer):
             "telefono",
             "correo",
             "bloqueada",
+            "tiene_evidencia_imagen",
+            "tiene_evidencia_documento",
+            "tiene_evidencia_video",
         ]
+        # tipo_unidad_medica viene del catalogo (UnidadMedica.tipo_unidad_medica)
+        # al precargarse -- no debe poder editarse a mano y desincronizarse.
+        read_only_fields = ["jornada", "ruta", "unidad_medica", "bloqueada", "tipo_unidad_medica"]
 
     def validate(self, attrs):
         request = self.context["request"]
-        ruta = attrs.get("ruta", self.instance.ruta if self.instance else None)
-        unidad_medica = attrs.get(
-            "unidad_medica", self.instance.unidad_medica if self.instance else None
-        )
+        if self.instance is None:
+            raise serializers.ValidationError(
+                "Las unidades se precargan automáticamente al crear la distribución."
+            )
 
-        # Un usuario_entidad no puede programar sobre la ruta de otra entidad
-        # (defensa en profundidad: get_queryset del viewset ya lo evita en
-        # list/retrieve, esto cubre el create/update donde el cliente elige la ruta).
-        if request.user.rol == Usuario.ROL_USUARIO_ENTIDAD and ruta.entidad_id != request.user.entidad_id:
+        if (
+            request.user.rol == Usuario.ROL_USUARIO_ENTIDAD
+            and self.instance.unidad_medica.entidad_id != request.user.entidad_id
+        ):
             raise serializers.ValidationError("No puedes programar sobre una ruta de otra entidad.")
-
-        # Reusa la regla de negocio del modelo (blueprint-v01.md seccion 2.2):
-        # una unidad medica no puede estar en mas de una ruta de la misma jornada.
-        # ModelSerializer no llama full_clean()/clean() del modelo automaticamente,
-        # asi que se invoca aqui a mano.
-        instancia = ProgramacionVisita(
-            pk=self.instance.pk if self.instance else None,
-            ruta=ruta,
-            unidad_medica=unidad_medica,
-        )
-        try:
-            instancia.clean()
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(getattr(exc, "message_dict", exc.messages))
-
         return attrs

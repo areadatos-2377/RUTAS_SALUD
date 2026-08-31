@@ -92,6 +92,16 @@ select {
   border-color: var(--guinda);
 }
 
+@media (max-width: 760px) {
+  /* Safari en iOS hace zoom automatico al enfocar un input/select con
+     font-size menor a 16px -- se sube solo en movil, sin tocar el
+     tamano mas compacto de escritorio. */
+  .field input,
+  .field select {
+    font-size: 16px;
+  }
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

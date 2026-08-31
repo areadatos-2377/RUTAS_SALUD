@@ -7,54 +7,214 @@
   gap: 6px;
 }
 
-.entidad-group {
-  margin-bottom: 28px;
+.jornada-topbar {
+  align-items: flex-start;
 }
-.entidad-group__header {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid var(--guinda-pale-bg);
+.jornada-topbar > .btn-ghost {
+  margin-left: auto;
 }
-.entidad-group__header h3 {
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--guinda-d);
-}
-.entidad-group__meta {
-  font-size: 12px;
-  color: var(--gray-tx);
-}
-
-.ruta-block {
-  margin-bottom: 14px;
-  margin-left: 4px;
-}
-.ruta-block__header {
+.jornada-topbar__presentacion {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 6px;
 }
-.ruta-block__header .nombre {
-  font-size: 13.5px;
-}
-.ruta-block__meta {
-  font-size: 11.5px;
-  color: var(--gray-tx);
-}
-.ruta-block__header .btn-ghost {
-  margin-left: auto;
-  height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
-}
-.ruta-block__vacio {
+.jornada-topbar__contador {
   font-size: 12.5px;
   color: var(--gray-tx);
-  margin: 0 0 0 4px;
+  white-space: nowrap;
+}
+
+.jornada-controles {
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.jornada-controles .field {
+  min-width: 220px;
+}
+.jornada-busqueda {
+  width: min(420px, 100%);
+}
+.jornada-conteo {
+  margin: 0 0 9px auto;
+  font-size: 12px;
+  color: var(--gray-tx);
+  white-space: nowrap;
+}
+
+.tabla-cargando {
+  color: var(--gray-tx);
+  font-size: 13.5px;
+}
+
+.jornada-editor {
+  align-items: flex-end;
+  border-left: 3px solid var(--guinda);
+}
+.jornada-editor__unidad {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.jornada-editor__unidad span {
+  color: var(--guinda);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.jornada-editor__unidad strong {
+  font-size: 14px;
+}
+.jornada-editor .field {
+  flex: 1 1 180px;
+}
+.jornada-editor .field-numero {
+  flex: 0 1 150px;
+}
+.jornada-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.jornada-editor .login-error {
+  width: 100%;
+  margin: 0;
+}
+
+.jornada-tabla {
+  height: max(320px, calc(100vh - 250px));
+  overflow: auto;
+}
+.jornada-tabla table {
+  min-width: 1900px;
+}
+.jornada-tabla thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.jornada-tabla th,
+.jornada-tabla td {
+  padding: 10px 12px;
+}
+
+/* CLUES fija al hacer scroll horizontal -- con 13 columnas hay que poder
+   ver de que unidad se trata sin perderla de vista al scrollear hacia
+   Ruta/Fecha/Piezas/etc. (Nombre se queda sin fijar: es texto largo y
+   variable, y sumarla a la zona fija dejaba muy poco ancho libre en
+   pantallas de celular para ver el resto de las columnas). */
+.jornada-tabla th:nth-child(1),
+.jornada-tabla td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+  background: var(--paper);
+  box-shadow: 1px 0 0 var(--border);
+}
+.jornada-tabla thead th:nth-child(1) {
+  z-index: 2;
+  background: #fcfbf8;
+}
+.jornada-tabla tbody tr:hover td:nth-child(1) {
+  background: #fcfbf8;
+}
+.jornada-tabla tr.fila-editando td:nth-child(1) {
+  background: var(--guinda-pale-bg);
+}
+
+/* Acciones (Editar/Evidencia/Eliminar) fija a la derecha -- son 3 botones
+   angostos, y aun con scroll al maximo la zona fija de la izquierda se
+   los sigue tapando parcialmente. Fijandola aparte, se puede actuar sobre
+   una fila sin tener que scrollear las 13 columnas para llegar a ella. */
+.jornada-tabla th:last-child,
+.jornada-tabla td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--paper);
+  box-shadow: -1px 0 0 var(--border);
+}
+.jornada-tabla thead th:last-child {
+  z-index: 2;
+  background: #fcfbf8;
+}
+.jornada-tabla tbody tr:hover td:last-child {
+  background: #fcfbf8;
+}
+.jornada-tabla tr.fila-editando td:last-child {
+  background: var(--guinda-pale-bg);
+}
+.jornada-tabla .fila-editando {
+  background: var(--guinda-pale-bg);
+}
+.jornada-tabla tbody tr {
+  scroll-margin-top: 44px;
+}
+.jornada-acciones {
+  text-align: right;
+  white-space: nowrap;
+}
+.jornada-acciones .btn-ghost {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+  scroll-margin-top: 44px;
+}
+.jornada-acciones .btn-ghost + .btn-ghost {
+  margin-left: 6px;
+}
+.jornada-marcador {
+  height: 28px;
+  width: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.jornada-marcador:hover {
+  background: #f4f1ea;
+}
+.jornada-marcador--seleccionada {
+  border-color: var(--guinda);
+  background: var(--guinda-pale-bg);
+}
+.jornada-marcador + .jornada-marcador,
+.jornada-marcador + .btn-ghost {
+  margin-left: 6px;
+}
+
+@media (max-width: 760px) {
+  .jornada-meta {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .jornada-controles {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .jornada-controles .field,
+  .jornada-busqueda {
+    width: 100%;
+  }
+  .jornada-conteo {
+    margin: 0;
+    white-space: normal;
+  }
+  .jornada-acciones .btn-ghost {
+    height: 36px;
+    padding: 0 12px;
+  }
+  .jornada-marcador {
+    height: 36px;
+    width: 36px;
+  }
 }

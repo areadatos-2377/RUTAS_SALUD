@@ -151,3 +151,56 @@
   padding: 26px 30px 34px;
   min-width: 0;
 }
+
+@media (max-width: 900px) {
+  .shell {
+    display: block;
+  }
+  .sidebar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    padding: 12px 14px 8px;
+    border-bottom: 0;
+  }
+  .brand .mark {
+    display: none;
+  }
+  .brand h1 {
+    font-size: 15px;
+  }
+  .nav {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 4px;
+    padding: 0 8px 8px;
+    overflow-x: auto;
+  }
+  .nav-section {
+    display: none;
+  }
+  .nav-item {
+    flex: 0 0 auto;
+    margin: 0;
+    white-space: nowrap;
+  }
+  .user-card {
+    margin: 6px 8px;
+    padding: 6px;
+    border: 0;
+  }
+  .user-avatar {
+    width: 30px;
+    height: 30px;
+  }
+  .user-meta {
+    display: none;
+  }
+  .main {
+    padding: 18px 14px 24px;
+  }
+}

@@ -1,5 +1,9 @@
+from django.db import transaction
+from django.db.models import Exists, OuterRef
 from rest_framework import permissions, serializers, viewsets
 
+from catalogos.models import UnidadMedica
+from entregas.models import EvidenciaArchivo
 from usuarios.models import Usuario
 from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
 
@@ -12,6 +16,23 @@ class JornadaViewSet(viewsets.ModelViewSet):
     queryset = Jornada.objects.all()
     serializer_class = JornadaSerializer
     permission_classes = [permissions.IsAuthenticated, PuedeGestionarJornadas]
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        jornada = serializer.save()
+        niveles_validos = Jornada.NIVELES_POR_CATEGORIA[jornada.categoria]
+        unidades = UnidadMedica.objects.filter(nivel_atencion__in=niveles_validos)
+        ProgramacionVisita.objects.bulk_create(
+            [
+                ProgramacionVisita(
+                    jornada=jornada,
+                    unidad_medica=unidad,
+                    tipo_unidad_medica=unidad.tipo_unidad_medica,
+                )
+                for unidad in unidades.iterator()
+            ],
+            batch_size=500,
+        )
 
 
 class RutaViewSet(viewsets.ModelViewSet):
@@ -39,25 +60,44 @@ class RutaViewSet(viewsets.ModelViewSet):
                 raise serializers.ValidationError({"entidad": "Este campo es requerido."})
             serializer.save()
 
-
 class ProgramacionVisitaViewSet(viewsets.ModelViewSet):
-    queryset = ProgramacionVisita.objects.select_related(
-        "ruta__jornada", "ruta__entidad", "unidad_medica"
-    ).all()
+    queryset = (
+        ProgramacionVisita.objects.select_related("jornada", "ruta", "unidad_medica__entidad")
+        .annotate(
+            tiene_evidencia_imagen=Exists(
+                EvidenciaArchivo.objects.filter(
+                    entrega__programacion_visita=OuterRef("pk"), tipo="foto"
+                )
+            ),
+            tiene_evidencia_documento=Exists(
+                EvidenciaArchivo.objects.filter(
+                    entrega__programacion_visita=OuterRef("pk"), tipo__in=["pdf", "documento"]
+                )
+            ),
+            tiene_evidencia_video=Exists(
+                EvidenciaArchivo.objects.filter(
+                    entrega__programacion_visita=OuterRef("pk"), tipo="video"
+                )
+            ),
+        )
+        .all()
+    )
     serializer_class = ProgramacionVisitaSerializer
     permission_classes = [permissions.IsAuthenticated, PuedeGestionarProgramacion]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         qs = super().get_queryset()
         usuario = self.request.user
         if usuario.rol == Usuario.ROL_USUARIO_ENTIDAD:
-            qs = qs.filter(ruta__entidad=usuario.entidad)
+            qs = qs.filter(unidad_medica__entidad=usuario.entidad)
+        entidad_id = self.request.query_params.get("entidad")
+        if entidad_id:
+            qs = qs.filter(unidad_medica__entidad_id=entidad_id)
         ruta_id = self.request.query_params.get("ruta")
         if ruta_id:
             qs = qs.filter(ruta_id=ruta_id)
         jornada_id = self.request.query_params.get("jornada")
         if jornada_id:
-            # Todas las visitas de la jornada (a traves de todas sus rutas) --
-            # lo usa el frontend para el export a Excel por entidad+jornada.
-            qs = qs.filter(ruta__jornada_id=jornada_id)
+            qs = qs.filter(jornada_id=jornada_id)
         return qs

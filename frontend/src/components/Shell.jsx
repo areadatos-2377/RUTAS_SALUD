@@ -15,6 +15,13 @@ const ICONOS = {
       <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
     </svg>
   ),
+  evidencia: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <rect x="3" y="6" width="18" height="14" rx="2" />
+      <circle cx="12" cy="13" r="3.5" />
+      <path d="M8 6l1.5-2.5h5L16 6" />
+    </svg>
+  ),
   salir: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -52,6 +59,9 @@ export default function Shell() {
           <div className="nav-section">Programación</div>
           <NavLink to="/jornadas" className="nav-item">
             {ICONOS.jornadas} Distribuciones
+          </NavLink>
+          <NavLink to="/evidencia" className="nav-item">
+            {ICONOS.evidencia} Evidencia
           </NavLink>
           {(usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN) && (
             <>

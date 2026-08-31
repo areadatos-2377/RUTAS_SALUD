@@ -7,6 +7,7 @@ modelo de datos y las reglas de negocio detrás de estos apps.
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 import dj_database_url
 from dotenv import load_dotenv
@@ -27,6 +28,40 @@ ALLOWED_HOSTS = [
 _railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
+
+# El proxy del frontend (ver frontend/server.js) le habla al backend por la
+# red privada de Railway, no por el dominio publico -- sin esto Django
+# rechaza esas peticiones con DisallowedHost.
+_railway_private_domain = os.environ.get("RAILWAY_PRIVATE_DOMAIN")
+if _railway_private_domain:
+    ALLOWED_HOSTS.append(_railway_private_domain)
+
+# Con USE_X_FORWARDED_HOST=True (mas abajo), Django valida ALLOWED_HOSTS
+# contra el header X-Forwarded-Host, no contra el Host real de la conexion
+# TCP -- y el proxy manda ahi el dominio publico del frontend (ver
+# frontend/server.js), no el dominio privado de arriba. Sin agregarlo aqui
+# tambien, toda peticion via el proxy se rechaza con DisallowedHost aunque
+# el dominio privado si este en la lista.
+_frontend_host = urlparse(os.environ.get("FRONTEND_URL", "")).hostname
+if _frontend_host:
+    ALLOWED_HOSTS.append(_frontend_host)
+
+# Railway termina HTTPS en su proxy y le manda HTTP liso al contenedor -- sin
+# esto, Django cree que toda peticion es HTTP, y arma los links "next" de
+# paginacion (request.build_absolute_uri) como http://, que el navegador
+# bloquea como "Mixed Content" al pedirlos desde una pagina https:// (asi
+# se manifesto: api.getAll() fallaba en cuanto una lista pasaba de 50 filas
+# y habia que pedir la pagina 2). No afecta desarrollo local: el dev server
+# de Django nunca manda este header a si mismo.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Las peticiones al backend ahora llegan via el proxy del frontend (red
+# privada de Railway), no directo del navegador -- sin esto,
+# request.build_absolute_uri() (los links "next"/"previous" de paginacion)
+# usaria el hostname interno backend.railway.internal, que el navegador no
+# puede resolver. El proxy manda el host publico real en X-Forwarded-Host
+# (ver frontend/server.js).
+USE_X_FORWARDED_HOST = True
 
 
 INSTALLED_APPS = [
@@ -127,6 +162,15 @@ REST_FRAMEWORK = {
 # Para armar el enlace completo de activacion de cuenta que ve el
 # super_admin (el backend no sabe en que dominio vive el frontend).
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5183")
+
+# Cloudflare R2 (compatible S3) para evidencia de entregas -- ver
+# entregas/storage.py y blueprint/setup-cloudflare-r2.md. Sin default de
+# credenciales (no hay uno seguro); si faltan, solo los endpoints de
+# evidencia fallan, el resto de la app sigue funcionando normal.
+STORAGE_ENDPOINT_URL = os.environ.get("STORAGE_ENDPOINT_URL")
+STORAGE_ACCESS_KEY_ID = os.environ.get("STORAGE_ACCESS_KEY_ID")
+STORAGE_SECRET_ACCESS_KEY = os.environ.get("STORAGE_SECRET_ACCESS_KEY")
+STORAGE_BUCKET_NAME = os.environ.get("STORAGE_BUCKET_NAME", "rutas-evidencias")
 
 CORS_ALLOWED_ORIGINS = [
     o.strip()

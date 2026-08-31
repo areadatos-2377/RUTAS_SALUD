@@ -9,6 +9,7 @@ import EntidadesPage from './pages/EntidadesPage';
 import CoordinadoresPage from './pages/CoordinadoresPage';
 import UnidadesMedicasPage from './pages/UnidadesMedicasPage';
 import UsuariosPage from './pages/UsuariosPage';
+import EvidenciaListaPage from './pages/EvidenciaListaPage';
 
 function RequireAuth({ children }) {
   const { usuario, cargando } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
           <Route index element={<Navigate to="/jornadas" replace />} />
           <Route path="jornadas" element={<JornadasPage />} />
           <Route path="jornadas/:id" element={<JornadaDetallePage />} />
+          <Route path="evidencia" element={<EvidenciaListaPage />} />
           <Route
             path="catalogos/coordinadores"
             element={

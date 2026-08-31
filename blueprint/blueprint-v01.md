@@ -28,7 +28,8 @@ Las entidades (estados) programan la distribución de insumos para la salud haci
 
 ### 2.2 Rutas `[RESUELTO]`
 
-- La ruta es **libre**: el usuario arma el listado de unidades a mano, sin optimización geográfica ni de capacidad.
+- Al crear una jornada, el sistema **precarga una fila por cada CLUES** compatible con la categoría. El usuario completa la ruta, fecha, cantidades y contacto directamente en cada fila, sin agregar unidades una por una.
+- La ruta es **libre** y se captura como dato de cada fila, sin optimización geográfica ni de capacidad.
 - Solo importa el **conjunto de unidades** de la ruta — el orden de visita no es relevante para el sistema.
 - **Fuera de alcance**: asociar vehículo, transportista o chofer a una ruta.
 - Una misma unidad médica **no puede** aparecer en más de una ruta dentro de la misma jornada.
@@ -84,8 +85,8 @@ La respuesta a la pregunta 10 (la cantidad programada es agregada por unidad, no
 - **UnidadMedica** — CLUES, nombre, entidad, tipo de unidad médica (derivado de tipología), municipio.
 - **Usuario** — rol (`super_admin` | `admin_nacional` | `usuario_entidad`), entidad asociada si aplica. Un `usuario_entidad` tiene permiso de programación y de evidencia por default (no hace falta un sub-rol separado, según 2.3 de este documento).
 - **Jornada** — tipo (ordinaria/extraordinaria/emergencia), fecha inicio, fecha fin, estatus.
-- **Ruta** — jornada, entidad, número/nombre de ruta.
-- **ProgramacionVisita** — ruta, unidad médica, fecha de distribución programada, claves a desplazar (conteo), piezas de medicamento, piezas de material de curación, tipo de unidad médica, quién recibe, teléfono, correo, **bloqueada** (booleano, para el mecanismo de bloqueo de edición de 2.3).
+- **Ruta** — modelo histórico para conservar programaciones previas; las nuevas capturas registran el número/nombre directamente en la fila.
+- **ProgramacionVisita** — jornada, unidad médica, número/nombre de ruta, fecha de distribución programada, claves a desplazar (conteo), piezas de medicamento, piezas de material de curación, tipo de unidad médica, quién recibe, teléfono, correo, **bloqueada** (booleano, para el mecanismo de bloqueo de edición de 2.3). Existe una sola fila por combinación jornada + unidad médica.
 - **Entrega** — referencia 1-a-1 a `ProgramacionVisita` (no hay entregas parciales), estatus entregado/no entregado, fecha, usuario que capturó.
 - **EvidenciaArchivo** — entrega asociada, tipo (foto/video/pdf/documento), archivo, metadatos.
 - **HistoricoMovimientos** — bitácora de cambios (tabla, registro, usuario, acción, timestamp, antes/después).

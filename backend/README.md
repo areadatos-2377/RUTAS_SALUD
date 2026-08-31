@@ -8,7 +8,7 @@ Django 5 + Django REST Framework. Ver `blueprint/blueprint-v01.md` y `blueprint/
 |---|---|
 | `usuarios` | `Usuario` (custom, `AUTH_USER_MODEL`) — roles `super_admin` / `admin_nacional` / `usuario_entidad`. |
 | `catalogos` | `Entidad`, `UnidadMedica` (CLUES como PK, admite altas manuales). |
-| `programacion` | `Jornada`, `Ruta`, `ProgramacionVisita`. |
+| `programacion` | `Jornada`, `Ruta` histórica, `ProgramacionVisita` precargada por CLUES. |
 | `entregas` | `Entrega` (1 a 1 con `ProgramacionVisita`), `EvidenciaArchivo`. |
 | `historico` | `HistoricoMovimientos` — bitácora genérica vía `ContentType`/`GenericForeignKey`. |
 
@@ -37,7 +37,7 @@ Endpoints, todos requieren sesión iniciada (`POST /api/auth/login/`):
 - `GET/POST/PATCH/DELETE /api/jornadas/` — lectura para cualquiera, escritura solo `admin_nacional`/`super_admin`.
 - `GET/POST/PATCH/DELETE /api/rutas/` y `/api/programacion-visitas/` — `usuario_entidad`/`super_admin` leen y escriben (un `usuario_entidad` solo ve/edita lo de su propia entidad, forzado server-side); `admin_nacional` solo lee.
 
-La regla "una unidad no puede repetirse en dos rutas de la misma jornada" se aplica tanto a nivel modelo (`ProgramacionVisita.clean()`) como a nivel API (reutilizada en el serializer). Probado con escenarios reales de los 3 roles vía `django.test.Client`, no solo revisión de código.
+Al crear una jornada se precarga automáticamente una fila por cada CLUES compatible con su categoría. Cada fila se edita para capturar ruta, fecha, cantidades y contacto; también puede eliminarse de esa jornada. La restricción única `(jornada, unidad_medica)` impide duplicados en la base de datos.
 
 ## Catálogo de CLUES (carga mensual)
 

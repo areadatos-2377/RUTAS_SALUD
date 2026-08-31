@@ -21,7 +21,12 @@ export function AuthProvider({ children }) {
         const datos = await api.yo();
         setUsuario(datos);
       } catch {
-        setUsuario(null);
+        // Carrera real: si el usuario ya lleno el formulario y logueo
+        // exitosamente ANTES de que esta llamada (disparada al montar,
+        // para saber si ya habia sesion) resolviera, no hay que pisar el
+        // usuario que el login ya puso -- solo limpiar si de verdad seguia
+        // sin sesion (actual es null).
+        setUsuario((actual) => actual ?? null);
       } finally {
         setCargando(false);
       }
