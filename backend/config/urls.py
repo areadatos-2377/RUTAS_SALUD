@@ -3,7 +3,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from catalogos.views import EntidadViewSet, UnidadMedicaViewSet
-from entregas.views import EntregaViewSet, EvidenciaArchivoViewSet
+from entregas.views import EntregaViewSet, EvidenciaArchivoViewSet, GenerarPresentacionView
 from programacion.views import JornadaViewSet, ProgramacionVisitaViewSet, RutaViewSet
 from usuarios.views import (
     UsuarioViewSet,
@@ -31,6 +31,7 @@ urlpatterns = [
     path("api/auth/logout/", cerrar_sesion),
     path("api/auth/me/", yo),
     path("api/auth/activar/<str:uidb64>/<str:token>/", activar_cuenta),
+    path("api/entregas/generar-presentacion/", GenerarPresentacionView.as_view()),
     path("api/", include(router.urls)),
     # Login/logout navegables del browsable API de DRF, util en desarrollo.
     path("api-auth/", include("rest_framework.urls")),

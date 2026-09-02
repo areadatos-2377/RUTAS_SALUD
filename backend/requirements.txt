@@ -8,12 +8,15 @@ djangorestframework==3.15.2
 et_xmlfile==2.0.0
 gunicorn==23.0.0
 jmespath==1.1.0
+lxml==6.1.2
 openpyxl==3.1.5
 packaging==26.3
+pillow==12.3.0
 psycopg==3.3.4
 psycopg-binary==3.3.4
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
+python-pptx==1.0.2
 s3transfer==0.19.2
 six==1.17.0
 sqlparse==0.6.0
@@ -21,3 +24,4 @@ typing_extensions==4.16.0
 tzdata==2026.3
 urllib3==2.7.0
 whitenoise==6.9.0
+xlsxwriter==3.2.9

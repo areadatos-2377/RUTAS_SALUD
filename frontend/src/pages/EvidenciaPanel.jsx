@@ -8,7 +8,7 @@ import './EvidenciaPanel.css';
 // usuario le basta con "Documentos", no necesita saber que Word y PDF se
 // guardan con tipo distinto.
 const CATEGORIAS = [
-  { key: 'imagen', label: 'Imágenes', icono: '🖼️', accept: '.jpg,.jpeg,.png,.heic,.heif,.webp', tipos: ['foto'] },
+  { key: 'imagen', label: 'Imágenes', icono: '🖼️', accept: '.jpg,.jpeg,.png', tipos: ['foto'] },
   { key: 'documento', label: 'Documentos', icono: '📄', accept: '.pdf,.doc,.docx', tipos: ['pdf', 'documento'] },
   { key: 'video', label: 'Video', icono: '🎞️', accept: '.mp4,.mov', tipos: ['video'] },
 ];

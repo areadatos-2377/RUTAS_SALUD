@@ -4,7 +4,6 @@ import { api, ApiError } from '../api/client';
 import { useAuth, ROLES } from '../auth/AuthContext';
 import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
 import { exportarProgramacionExcel } from '../utils/exportarProgramacionExcel';
-import { exportarPresentacionEvidencia } from '../utils/exportarPresentacionEvidencia';
 import EvidenciaPanel from './EvidenciaPanel';
 import EvidenciaVistaRapida from './EvidenciaVistaRapida';
 import '../styles/table.css';
@@ -165,59 +164,81 @@ export default function JornadaDetallePage() {
   }
 
   // Marcar foto por foto seria muy tedioso con muchas unidades -- al entrar
-  // en modo seleccion (o cambiar de entidad estando ya en ese modo) se
-  // elige sola la primera imagen de cada unidad que ya tenga fotos (la mas
-  // reciente, es la que ya se ve primero en cualquier lista -- ver
-  // EvidenciaArchivo.Meta.ordering). El usuario sigue pudiendo dar clic en
-  // el marcador de una unidad puntual para cambiar cual foto se usa.
+  // en modo seleccion se elige sola la primera imagen de cada unidad que ya
+  // tenga fotos (la mas reciente, es la que ya se ve primero en cualquier
+  // lista -- ver EvidenciaArchivo.Meta.ordering), EN TODA LA DISTRIBUCION,
+  // no solo en la entidad que se este viendo -- de otro modo habria que
+  // recorrer entidad por entidad para que las tomara en cuenta. Se pide
+  // aparte de `visitas` (que solo trae la entidad actual, paginada) con
+  // ?con_evidencia_imagen=1, que filtra en la base y evita traer las miles
+  // de filas de precarga sin nada capturado. El usuario sigue pudiendo dar
+  // clic en el marcador de una unidad puntual para cambiar cual foto se usa.
   useEffect(() => {
-    if (!modoSeleccion || !visitas) return;
-    const pendientes = visitas.filter((v) => v.tiene_evidencia_imagen && !fotosSeleccionadas[v.id]);
-    if (pendientes.length === 0) return;
-
+    if (!modoSeleccion || !jornada) return;
     let cancelado = false;
     setAutoSeleccionando(true);
-    Promise.all(
-      pendientes.map(async (visita) => {
-        try {
-          const entregas = await api.getAll(`/api/entregas/?programacion_visita=${visita.id}`);
-          const primeraImagen = entregas[0]?.evidencias?.find((ev) => ev.tipo === 'foto');
-          return primeraImagen ? { visita, evidencia: primeraImagen } : null;
-        } catch {
-          return null;
-        }
-      }),
-    ).then((resultados) => {
-      if (cancelado) return;
-      setFotosSeleccionadas((actuales) => {
-        const copia = { ...actuales };
-        for (const r of resultados) {
-          if (!r || copia[r.visita.id]) continue; // no pisar una seleccion manual hecha mientras cargaba
-          copia[r.visita.id] = {
-            evidenciaId: r.evidencia.id,
-            urlDescarga: r.evidencia.url_descarga,
-            clues: r.visita.unidad_medica,
-            nombreUnidad: r.visita.unidad_medica_nombre,
-            entidadNombre: r.visita.unidad_medica_entidad_nombre,
-          };
-        }
-        return copia;
+    api.getAll(`/api/programacion-visitas/?jornada=${jornada.id}&con_evidencia_imagen=1`)
+      .then((visitasConImagen) => {
+        if (cancelado) return [];
+        const pendientes = visitasConImagen.filter((v) => !fotosSeleccionadas[v.id]);
+        return Promise.all(
+          pendientes.map(async (visita) => {
+            try {
+              const entregas = await api.getAll(`/api/entregas/?programacion_visita=${visita.id}`);
+              const primeraImagen = entregas[0]?.evidencias?.find((ev) => ev.tipo === 'foto');
+              return primeraImagen ? { visita, evidencia: primeraImagen } : null;
+            } catch {
+              return null;
+            }
+          }),
+        );
+      })
+      .then((resultados) => {
+        if (cancelado) return;
+        setFotosSeleccionadas((actuales) => {
+          const copia = { ...actuales };
+          for (const r of resultados) {
+            if (!r || copia[r.visita.id]) continue; // no pisar una seleccion manual hecha mientras cargaba
+            copia[r.visita.id] = {
+              evidenciaId: r.evidencia.id,
+              urlDescarga: r.evidencia.url_descarga,
+              clues: r.visita.unidad_medica,
+              nombreUnidad: r.visita.unidad_medica_nombre,
+              entidadNombre: r.visita.unidad_medica_entidad_nombre,
+            };
+          }
+          return copia;
+        });
+        setAutoSeleccionando(false);
       });
-      setAutoSeleccionando(false);
-    });
 
     return () => { cancelado = true; };
     // fotosSeleccionadas se lee pero NO debe disparar este effect de nuevo
     // (el propio efecto la actualiza -- entraria en loop). Solo debe correr
-    // al entrar a modo seleccion o al cargar una nueva lista de visitas.
+    // al entrar a modo seleccion.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modoSeleccion, visitas]);
+  }, [modoSeleccion, jornada]);
 
   async function onGenerarPresentacion() {
     setGenerandoPresentacion(true);
     setError(null);
     try {
-      await exportarPresentacionEvidencia({ jornada, fotos: Object.values(fotosSeleccionadas) });
+      const fotos = Object.entries(fotosSeleccionadas).map(([visitaId, foto]) => ({
+        visita_id: Number(visitaId),
+        evidencia_id: foto.evidenciaId,
+      }));
+      const { blob, nombreArchivo } = await api.postArchivo('/api/entregas/generar-presentacion/', {
+        jornada_id: jornada.id,
+        fotos,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombreArchivo;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       setFotosSeleccionadas({});
       setModoSeleccion(false);
     } catch {

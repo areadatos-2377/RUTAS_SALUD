@@ -87,6 +87,33 @@ async function peticion(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+// Para endpoints que regresan un archivo binario (ej. la presentacion de
+// evidencia) en vez de JSON -- peticion() siempre espera JSON, asi que esto
+// vive aparte en lugar de intentar meterlo ahi con condicionales.
+async function peticionArchivo(path, body) {
+  const headers = { Accept: '*/*', 'Content-Type': 'application/json' };
+  if (csrfTokenActual) headers['X-CSRFToken'] = csrfTokenActual;
+
+  const resp = await fetch(path.startsWith('http') ? path : `${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const contentType = resp.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await resp.json() : await resp.text();
+    if (resp.status === 401) window.dispatchEvent(new CustomEvent('sesion-expirada'));
+    throw new ApiError(resp.status, data);
+  }
+
+  const disposicion = resp.headers.get('content-disposition') || '';
+  const coincidencia = disposicion.match(/filename="?([^"]+)"?/);
+  const nombreArchivo = coincidencia ? coincidencia[1] : 'archivo';
+  return { blob: await resp.blob(), nombreArchivo };
+}
+
 export const api = {
   primarCsrf: async () => {
     const datos = await peticion('/api/auth/csrf/');
@@ -108,6 +135,7 @@ export const api = {
   post: (path, body) => peticion(path, { method: 'POST', body }),
   patch: (path, body) => peticion(path, { method: 'PATCH', body }),
   del: (path) => peticion(path, { method: 'DELETE' }),
+  postArchivo: (path, body) => peticionArchivo(path, body),
 
   // Sigue next/next/next hasta traer TODAS las paginas. Usar solo para listas
   // que de verdad necesitan estar completas (selects, autocompletado,

@@ -200,3 +200,29 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SAMESITE = "None"
     CSRF_COOKIE_SECURE = True
+
+# El LOGGING que trae Django por default apaga el handler de consola cuando
+# DEBUG=False (asume que vas a configurar ADMINS + correo para enterarte de
+# errores en produccion, cosa que este proyecto nunca hizo) -- resultado:
+# CUALQUIER error 500 en produccion se perdia en silencio, sin nada en los
+# logs de Railway (asi se detecto: un 500 real, cero rastro). Con esto,
+# cualquier excepcion durante una peticion se imprime a consola siempre,
+# tenga DEBUG el valor que tenga.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}

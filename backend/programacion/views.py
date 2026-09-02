@@ -94,6 +94,13 @@ class ProgramacionVisitaViewSet(viewsets.ModelViewSet):
         entidad_id = self.request.query_params.get("entidad")
         if entidad_id:
             qs = qs.filter(unidad_medica__entidad_id=entidad_id)
+        # Para "Generar presentacion": elegir la primera foto de cada unidad
+        # con imagen en TODA la distribucion (no solo la entidad que se esta
+        # viendo) sin traer las miles de filas de precarga sin nada
+        # capturado -- filtra en la base con la misma anotacion Exists de
+        # arriba, no en Python despues de traer todo.
+        if self.request.query_params.get("con_evidencia_imagen"):
+            qs = qs.filter(tiene_evidencia_imagen=True)
         ruta_id = self.request.query_params.get("ruta")
         if ruta_id:
             qs = qs.filter(ruta_id=ruta_id)

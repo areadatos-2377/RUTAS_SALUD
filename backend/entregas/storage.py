@@ -17,10 +17,13 @@ from django.conf import settings
 
 MAX_EVIDENCIA_BYTES = 15 * 1024 * 1024  # 15MB -- fotos de celular pesan mas que un PDF
 
-# Extension (en minusculas) -> tipo de EvidenciaArchivo.TIPO_CHOICES.
+# Extension (en minusculas) -> tipo de EvidenciaArchivo.TIPO_CHOICES. Solo
+# JPG/PNG para imagenes -- python-pptx (usado al generar la presentacion,
+# ver presentacion.py) no puede insertar WEBP/HEIC en una diapositiva, y
+# HEIC ademas ni Pillow lo abre sin un plugin aparte. En vez de convertir
+# esos formatos al vuelo, se rechazan desde la subida.
 EXTENSION_A_TIPO = {
-    ".jpg": "foto", ".jpeg": "foto", ".png": "foto", ".heic": "foto",
-    ".heif": "foto", ".webp": "foto",
+    ".jpg": "foto", ".jpeg": "foto", ".png": "foto",
     ".mp4": "video", ".mov": "video",
     ".pdf": "pdf",
     ".doc": "documento", ".docx": "documento",
@@ -88,3 +91,12 @@ def generar_url_descarga(key: str, expira_segundos: int = 300) -> str:
 def eliminar_evidencia(key: str) -> None:
     cliente = _cliente_s3()
     cliente.delete_object(Bucket=settings.STORAGE_BUCKET_NAME, Key=key)
+
+
+def descargar_evidencia(key: str) -> bytes:
+    """Trae el archivo completo a memoria -- para insertarlo en el .pptx de
+    evidencia (generar_url_descarga sirve para que el navegador lo pida
+    directo a R2, esto es para cuando el propio backend necesita los bytes)."""
+    cliente = _cliente_s3()
+    respuesta = cliente.get_object(Bucket=settings.STORAGE_BUCKET_NAME, Key=key)
+    return respuesta["Body"].read()
