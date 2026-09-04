@@ -41,7 +41,9 @@ Al crear una jornada se precarga automáticamente una fila por cada CLUES compat
 
 ## Catálogo de CLUES (carga mensual)
 
-El área actualiza `data/raw/CLUES_IMB.xlsx` cada mes. Cuando eso pase:
+El área actualiza `data/raw/CLUES_IMB.xlsx` cada mes. El servicio de Railway se
+construye usando `backend/` como raíz aislada, así que antes de desplegar también
+deben copiarse ambos archivos de `data/raw/` a `backend/data/raw/`. Cuando eso pase:
 
 ```powershell
 cd backend

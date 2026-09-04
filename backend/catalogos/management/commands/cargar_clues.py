@@ -29,9 +29,15 @@ from django.db import transaction
 
 from catalogos.models import Entidad, UnidadMedica
 
-BASE_DIR = Path(__file__).resolve().parents[4]
-CLUES_XLSX = BASE_DIR / "data" / "raw" / "CLUES_IMB.xlsx"
-ENTIDADES_XLSX = BASE_DIR / "data" / "raw" / "ejemplo_6ta_distribucion_BC.xlsx"
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+DATA_DIR = BACKEND_DIR / "data" / "raw"
+if not DATA_DIR.exists():
+    # Compatibilidad con clones anteriores, donde las fuentes solo vivían en
+    # data/raw en la raíz del monorepo. Railway despliega backend/ de forma
+    # aislada, por lo que producción usa la copia incluida dentro del backend.
+    DATA_DIR = BACKEND_DIR.parent / "data" / "raw"
+CLUES_XLSX = DATA_DIR / "CLUES_IMB.xlsx"
+ENTIDADES_XLSX = DATA_DIR / "ejemplo_6ta_distribucion_BC.xlsx"
 
 # Decision 2026-08-24: se amplia de solo primer nivel (blueprint-v00) a los
 # 3 niveles reales de la fuente -- excluye "NO APLICA", que en CLUES_IMB.xlsx
