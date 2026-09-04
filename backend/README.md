@@ -49,6 +49,18 @@ python manage.py cargar_clues --dry-run   # revisar qué haría, sin escribir
 python manage.py cargar_clues             # aplicar de verdad
 ```
 
+Cuando el Excel incorpora contactos por unidad por primera vez, usa una sola vez:
+
+```powershell
+python manage.py cargar_clues --rellenar-visitas-sin-contacto
+```
+
+Esto copia `¿QUIÉN RECIBE EN UNIDAD?`, `TELÉFONO` y `CORREO` a las visitas ya
+creadas, pero únicamente cuando el campo correspondiente sigue vacío. Los datos
+que un usuario haya editado en una distribución no se sobrescriben. Las nuevas
+distribuciones toman esos valores automáticamente del catálogo y después pueden
+modificarse de forma independiente.
+
 Es **seguro re-ejecutarlo** las veces que haga falta: agrega los CLUES nuevos, actualiza los que cambiaron de nombre/tipo/municipio, y **nunca toca ni borra** las unidades con `origen=manual` (las capturadas a mano porque su CLUES no estaba en el catálogo oficial — ver `blueprint/herramienta-captura-programacion-plan-v00.md`). Tampoco borra CLUES que hayan desaparecido del nuevo Excel; darlas de baja formalmente es una decisión de negocio aparte.
 
 ## Pendientes conocidos (no bloquean lo ya construido)

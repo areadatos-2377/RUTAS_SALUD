@@ -28,6 +28,9 @@ class JornadaViewSet(viewsets.ModelViewSet):
                     jornada=jornada,
                     unidad_medica=unidad,
                     tipo_unidad_medica=unidad.tipo_unidad_medica,
+                    quien_recibe=unidad.quien_recibe,
+                    telefono=unidad.telefono,
+                    correo=unidad.correo,
                 )
                 for unidad in unidades.iterator()
             ],

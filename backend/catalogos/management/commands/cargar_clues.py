@@ -43,6 +43,12 @@ NIVELES_ATENCION_ESPERADOS = {
 }
 ESTATUS_ESPERADO = "EN OPERACION"
 
+COLUMNAS_CONTACTO = {
+    "quien_recibe": "¿QUIÉN RECIBE EN UNIDAD?",
+    "telefono": "TELÉFONO",
+    "correo": "CORREO",
+}
+
 ALIAS_ENTIDAD = {
     "MEXICO": "ESTADO DE MEXICO",
     "MICHOACAN DE OCAMPO": "MICHOACAN",
@@ -78,6 +84,10 @@ def mapear_tipo_unidad_medica(nombre_tipologia):
     return nombre_tipologia
 
 
+def texto_celda(valor):
+    return "" if valor is None else str(valor).strip()
+
+
 class DryRunRollback(Exception):
     pass
 
@@ -108,6 +118,14 @@ class Command(BaseCommand):
                 "para poder revertirla completa)."
             ),
         )
+        parser.add_argument(
+            "--rellenar-visitas-sin-contacto",
+            action="store_true",
+            help=(
+                "Copia los contactos del catálogo a los campos vacíos de visitas ya existentes. "
+                "No sobrescribe valores capturados y no es necesario en cargas mensuales posteriores."
+            ),
+        )
 
     def handle(self, *args, **options):
         if not CLUES_XLSX.exists():
@@ -117,18 +135,19 @@ class Command(BaseCommand):
 
         dry_run = options["dry_run"]
         batch_size = options["batch_size"] if not dry_run else 0
+        rellenar_visitas = options["rellenar_visitas_sin_contacto"]
 
         if dry_run:
             try:
                 with transaction.atomic():
-                    self._cargar(dry_run, batch_size)
+                    self._cargar(dry_run, batch_size, rellenar_visitas)
                     raise DryRunRollback()
             except DryRunRollback:
                 self.stdout.write(self.style.WARNING("\n--dry-run: no se escribio nada en la base de datos."))
         else:
-            self._cargar(dry_run, batch_size)
+            self._cargar(dry_run, batch_size, rellenar_visitas)
 
-    def _cargar(self, dry_run, batch_size):
+    def _cargar(self, dry_run, batch_size, rellenar_visitas):
         coordinadores, orden_entidades = self._leer_coordinadores()
 
         mapa_entidad = {}
@@ -165,7 +184,14 @@ class Command(BaseCommand):
         existentes = {u.clues: u for u in UnidadMedica.objects.all()}
 
         campos_comparables = [
-            "nombre", "tipo_unidad_medica", "municipio", "origen", "nivel_atencion",
+            "nombre",
+            "tipo_unidad_medica",
+            "municipio",
+            "quien_recibe",
+            "telefono",
+            "correo",
+            "origen",
+            "nivel_atencion",
         ]
         # dict, no lista: si el mismo CLUES aparece dos veces en el Excel (pasa),
         # bulk_create tronaria con un IntegrityError de PK duplicada al insertar
@@ -199,6 +225,9 @@ class Command(BaseCommand):
                 "entidad": entidad_obj,
                 "tipo_unidad_medica": mapear_tipo_unidad_medica(tipologia),
                 "municipio": row[idx["MUNICIPIO"]] or "",
+                "quien_recibe": texto_celda(row[idx[COLUMNAS_CONTACTO["quien_recibe"]]]),
+                "telefono": texto_celda(row[idx[COLUMNAS_CONTACTO["telefono"]]]),
+                "correo": texto_celda(row[idx[COLUMNAS_CONTACTO["correo"]]]),
                 "origen": UnidadMedica.ORIGEN_CATALOGO_MENSUAL,
                 "nivel_atencion": nivel_atencion,
             }
@@ -208,6 +237,10 @@ class Command(BaseCommand):
                 if clues not in nuevos_por_clues:
                     creadas += 1
                 nuevos_por_clues[clues] = UnidadMedica(clues=clues, **defaults)
+                return
+
+            if anterior.origen == UnidadMedica.ORIGEN_MANUAL:
+                sin_cambios += 1
                 return
 
             cambio = anterior.entidad_id != entidad_obj.id or any(
@@ -258,11 +291,31 @@ class Command(BaseCommand):
                     "(fuera de las 23 entidades del catalogo, ej. Guanajuato/Yucatan)."
                 )
             )
+        if rellenar_visitas:
+            self._rellenar_visitas_sin_contacto()
         self.stdout.write(
             self.style.SUCCESS(
                 f"Total en catalogo tras la carga: {UnidadMedica.objects.filter(origen=UnidadMedica.ORIGEN_CATALOGO_MENSUAL).count()} "
                 f"unidades de catalogo mensual + {UnidadMedica.objects.filter(origen=UnidadMedica.ORIGEN_MANUAL).count()} capturadas manualmente."
             )
+        )
+
+    def _rellenar_visitas_sin_contacto(self):
+        from django.db.models import OuterRef, Subquery
+
+        from programacion.models import ProgramacionVisita
+
+        unidad = UnidadMedica.objects.filter(pk=OuterRef("unidad_medica_id"))
+        actualizaciones = 0
+        for campo in COLUMNAS_CONTACTO:
+            visitas_sin_dato = ProgramacionVisita.objects.filter(**{campo: ""}).exclude(
+                **{f"unidad_medica__{campo}": ""}
+            )
+            actualizaciones += visitas_sin_dato.update(
+                **{campo: Subquery(unidad.values(campo)[:1])}
+            )
+        self.stdout.write(
+            f"Contactos precargados en visitas existentes: {actualizaciones} campos vacíos."
         )
 
     def _leer_coordinadores(self):

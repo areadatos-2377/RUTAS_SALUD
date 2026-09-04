@@ -11,6 +11,16 @@ class EntidadAdmin(admin.ModelAdmin):
 
 @admin.register(UnidadMedica)
 class UnidadMedicaAdmin(admin.ModelAdmin):
-    list_display = ["clues", "nombre", "entidad", "nivel_atencion", "tipo_unidad_medica", "origen"]
+    list_display = [
+        "clues",
+        "nombre",
+        "entidad",
+        "nivel_atencion",
+        "tipo_unidad_medica",
+        "quien_recibe",
+        "telefono",
+        "correo",
+        "origen",
+    ]
     list_filter = ["entidad", "nivel_atencion", "origen", "tipo_unidad_medica"]
     search_fields = ["clues", "nombre"]

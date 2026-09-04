@@ -44,6 +44,9 @@ class UnidadMedica(models.Model):
     # caracteres) -- SQLite lo dejaba pasar silenciosamente, Postgres no.
     tipo_unidad_medica = models.CharField(max_length=100, blank=True)
     municipio = models.CharField(max_length=100, blank=True)
+    quien_recibe = models.CharField(max_length=150, blank=True)
+    telefono = models.CharField(max_length=100, blank=True)
+    correo = models.CharField(max_length=150, blank=True)
     origen = models.CharField(max_length=20, choices=ORIGEN_CHOICES, default=ORIGEN_MANUAL)
     # Viene tal cual de la columna "NIVEL ATENCION" de CLUES_IMB.xlsx. El
     # catalogo mensual solo importa PRIMER/SEGUNDO/TERCER NIVEL (excluye

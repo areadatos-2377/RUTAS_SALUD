@@ -3,6 +3,14 @@ import { useAuth, ROLES } from '../auth/AuthContext';
 import './Shell.css';
 
 const ICONOS = {
+  panel: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  ),
   jornadas: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
       <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -51,11 +59,17 @@ export default function Shell() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="mark">R</div>
+          <img
+            className="brand-logo"
+            src="/logos/logohorizontal1.png"
+            alt="IMSS Bienestar, Servicios Públicos de Salud"
+          />
           <h1>Rutas de la salud</h1>
-          <p>IMSS-Bienestar</p>
         </div>
         <nav className="nav">
+          <a href="http://10.17.238.119:8100/" className="nav-item">
+            {ICONOS.panel} Panel de control
+          </a>
           <div className="nav-section">Programación</div>
           <NavLink to="/jornadas" className="nav-item">
             {ICONOS.jornadas} Distribuciones
