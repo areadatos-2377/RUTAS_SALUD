@@ -68,7 +68,7 @@ export default function Shell() {
         </div>
         <nav className="nav">
           <a href="http://10.17.238.119:8100/" className="nav-item">
-            {ICONOS.panel} Panel de control
+            {ICONOS.panel} Monitoreo y Seguimiento
           </a>
           <div className="nav-section">Programación</div>
           <NavLink to="/jornadas" className="nav-item">
