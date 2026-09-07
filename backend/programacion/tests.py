@@ -2,6 +2,7 @@ from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from catalogos.management.commands.cargar_clues import Command as CargarCluesCommand
 from catalogos.models import Entidad, UnidadMedica
 from usuarios.models import Usuario
 
@@ -18,6 +19,9 @@ class PrecargaJornadaTests(APITestCase):
 			entidad=self.colima,
 			tipo_unidad_medica="CENTRO DE SALUD",
 			municipio="Colima",
+			quien_recibe="Contacto del catálogo",
+			telefono="312 123 4567 EXT 8",
+			correo="farmacia@ejemplo.test - almacen@ejemplo.test",
 			nivel_atencion=UnidadMedica.NIVEL_PRIMER,
 		)
 		self.unidad_jalisco = UnidadMedica.objects.create(
@@ -73,6 +77,9 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertIsNone(fila.fecha_distribucion_programada)
 		self.assertEqual(fila.ruta_numero, "")
 		self.assertEqual(fila.tipo_unidad_medica, "CENTRO DE SALUD")
+		self.assertEqual(fila.quien_recibe, "Contacto del catálogo")
+		self.assertEqual(fila.telefono, "312 123 4567 EXT 8")
+		self.assertEqual(fila.correo, "farmacia@ejemplo.test - almacen@ejemplo.test")
 
 	def test_restriccion_impide_duplicar_clues_en_jornada(self):
 		respuesta = self.crear_jornada()
@@ -111,6 +118,8 @@ class PrecargaJornadaTests(APITestCase):
 				"fecha_distribucion_programada": "2026-09-02",
 				"claves_a_desplazar": 12,
 				"quien_recibe": "Responsable de unidad",
+				"telefono": "312 765 4321 EXT 20",
+				"correo": "contacto actualizado",
 			},
 			format="json",
 		)
@@ -119,7 +128,28 @@ class PrecargaJornadaTests(APITestCase):
 		fila.refresh_from_db()
 		self.assertEqual(fila.ruta_numero, "Ruta 3")
 		self.assertEqual(fila.claves_a_desplazar, 12)
+		self.assertEqual(fila.quien_recibe, "Responsable de unidad")
+		self.assertEqual(fila.telefono, "312 765 4321 EXT 20")
+		self.assertEqual(fila.correo, "contacto actualizado")
 
 		eliminada = self.client.delete(f"/api/programacion-visitas/{fila.id}/")
 		self.assertEqual(eliminada.status_code, status.HTTP_204_NO_CONTENT)
 		self.assertFalse(ProgramacionVisita.objects.filter(pk=fila.id).exists())
+
+	def test_rellenar_contactos_existentes_solo_completa_campos_vacios(self):
+		respuesta = self.crear_jornada()
+		fila = ProgramacionVisita.objects.get(
+			jornada_id=respuesta.data["id"],
+			unidad_medica=self.unidad_colima,
+		)
+		fila.quien_recibe = "Contacto capturado"
+		fila.telefono = ""
+		fila.correo = ""
+		fila.save(update_fields=["quien_recibe", "telefono", "correo"])
+
+		CargarCluesCommand()._rellenar_visitas_sin_contacto()
+
+		fila.refresh_from_db()
+		self.assertEqual(fila.quien_recibe, "Contacto capturado")
+		self.assertEqual(fila.telefono, self.unidad_colima.telefono)
+		self.assertEqual(fila.correo, self.unidad_colima.correo)

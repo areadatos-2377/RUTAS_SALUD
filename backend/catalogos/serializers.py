@@ -18,6 +18,9 @@ class UnidadMedicaSerializer(serializers.ModelSerializer):
             "entidad",
             "tipo_unidad_medica",
             "municipio",
+            "quien_recibe",
+            "telefono",
+            "correo",
             "origen",
             "nivel_atencion",
         ]

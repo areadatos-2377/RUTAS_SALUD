@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     "usuarios",
     "programacion",
     "entregas",
+    "picking_packing",
     "historico",
 ]
 

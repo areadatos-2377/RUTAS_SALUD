@@ -369,15 +369,15 @@ export default function JornadaDetallePage() {
           </div>
           <div className="field">
             <label htmlFor="recibe">¿Quién recibe?</label>
-            <input id="recibe" value={formulario.quien_recibe} onChange={(e) => setFormulario({ ...formulario, quien_recibe: e.target.value })} />
+            <input id="recibe" maxLength={150} value={formulario.quien_recibe} onChange={(e) => setFormulario({ ...formulario, quien_recibe: e.target.value })} />
           </div>
           <div className="field">
             <label htmlFor="telefono">Teléfono</label>
-            <input id="telefono" value={formulario.telefono} onChange={(e) => setFormulario({ ...formulario, telefono: e.target.value })} />
+            <input id="telefono" maxLength={100} value={formulario.telefono} onChange={(e) => setFormulario({ ...formulario, telefono: e.target.value })} />
           </div>
           <div className="field">
             <label htmlFor="correo">Correo</label>
-            <input id="correo" type="email" value={formulario.correo} onChange={(e) => setFormulario({ ...formulario, correo: e.target.value })} />
+            <input id="correo" maxLength={150} value={formulario.correo} onChange={(e) => setFormulario({ ...formulario, correo: e.target.value })} />
           </div>
           <div className="jornada-editor__actions">
             <button className="btn-primary" type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>

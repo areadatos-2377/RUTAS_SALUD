@@ -1,0 +1,85 @@
+/* Tabla entidad x dia -- puede tener bastantes columnas (una por dia del
+   periodo) y bastantes filas (una por entidad participante), asi que
+   necesita scroll en ambos sentidos con la columna de Entidad y la de
+   Accion fijas, igual que .jornada-tabla en JornadaDetallePage.css pero
+   con columnas angostas de ancho fijo (no las 13 columnas de contenido
+   variable de esa tabla). */
+.pp-tabla {
+  height: max(320px, calc(100vh - 300px));
+  overflow: auto;
+}
+.pp-tabla table {
+  min-width: 100%;
+}
+.pp-tabla thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.pp-columna-dia {
+  width: 92px;
+  min-width: 92px;
+  max-width: 92px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pp-tabla th:first-child,
+.pp-tabla td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 200px;
+  background: var(--paper);
+  box-shadow: 1px 0 0 var(--border);
+}
+.pp-tabla thead th:first-child {
+  z-index: 2;
+  background: #fcfbf8;
+}
+.pp-tabla tbody tr:hover td:first-child {
+  background: #fcfbf8;
+}
+
+.pp-tabla th:last-child,
+.pp-tabla td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--paper);
+  box-shadow: -1px 0 0 var(--border);
+}
+.pp-tabla thead th:last-child {
+  z-index: 2;
+  background: #fcfbf8;
+}
+.pp-tabla tbody tr:hover td:last-child {
+  background: #fcfbf8;
+}
+
+.pp-indicador {
+  display: inline-block;
+  font-size: 14px;
+  opacity: 0.22;
+  filter: grayscale(1);
+}
+.pp-indicador--ok {
+  opacity: 1;
+  filter: none;
+}
+.pp-indicador + .pp-indicador {
+  margin-left: 4px;
+}
+
+@media (max-width: 760px) {
+  .pp-columna-dia {
+    width: 76px;
+    min-width: 76px;
+    max-width: 76px;
+  }
+  .pp-tabla th:first-child,
+  .pp-tabla td:first-child {
+    min-width: 140px;
+  }
+}

@@ -13,6 +13,16 @@ class EntidadViewSet(viewsets.ModelViewSet):
     serializer_class = EntidadSerializer
     permission_classes = [permissions.IsAuthenticated, SoloLecturaOSuperAdmin]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # ?jornada=<id> -- Picking & Packing lo usa para listar solo las
+        # entidades que de verdad participan en esa distribucion (tienen al
+        # menos una unidad medica programada), no el catalogo completo.
+        jornada_id = self.request.query_params.get("jornada")
+        if jornada_id:
+            qs = qs.filter(unidades_medicas__visitas_programadas__jornada_id=jornada_id).distinct()
+        return qs
+
     @action(
         detail=True,
         methods=["patch"],

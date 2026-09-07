@@ -14,23 +14,20 @@ se copie sin cambios: las relaciones (rId) son por diapositiva, copiar el
 XML de una forma no copia sus relaciones.
 """
 
-import copy
 import io
 import logging
 from pathlib import Path
 
 from pptx import Presentation
-from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.util import Pt
 
 from . import storage
+from .pptx_utils import duplicar_diapositiva, eliminar_diapositiva, forma_por_id, texto_forma
 from .regiones import orden_regiones, region_de
 
 logger = logging.getLogger(__name__)
 
 RUTA_PLANTILLA = Path(__file__).resolve().parent / "plantillas" / "Formato_rutas.pptx"
-
-_NS_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 
 # La plantilla original traia 8 rectangulos con foto de muestra (uno por
 # slot) -- se quitaron porque solo eran de muestra y pesaban mucho. Ya no
@@ -56,18 +53,6 @@ _ID_DIA_CONTENIDO = 11
 _ID_DIA_PORTADA = 4
 _ID_TITULO_PORTADA = 3
 _ID_TITULO_REGION = 2
-
-
-def _texto_forma(forma, texto_nuevo):
-    """Cambia el texto de una forma preservando el formato (fuente, tamano,
-    color) del primer run -- reemplazar text_frame.text de un jalon lo
-    resetea a la fuente por default."""
-    parrafo = forma.text_frame.paragraphs[0]
-    if not parrafo.runs:
-        parrafo.add_run()
-    parrafo.runs[0].text = texto_nuevo
-    for run_extra in parrafo.runs[1:]:
-        run_extra.text = ""
 
 
 def _texto_subtitulo_portada(forma, texto_nuevo):
@@ -106,55 +91,12 @@ def _texto_leyenda(forma, nombre_unidad, clues):
     parrafos[0].runs[0].font.size = _tam_fuente_nombre(nombre_unidad)
 
 
-def _forma_por_id(diapositiva, shape_id):
-    for forma in diapositiva.shapes:
-        if forma.shape_id == shape_id:
-            return forma
-    raise ValueError(f"No se encontro la forma id={shape_id} en la diapositiva -- "
-                      "revisar si la plantilla Formato_rutas.pptx cambio de estructura.")
-
-
-def _remapear_imagenes(elemento, parte_origen, parte_nueva):
-    for nodo in elemento.iter():
-        for atributo in ("embed", "link"):
-            rid_viejo = nodo.get(f"{_NS_REL}{atributo}")
-            if not rid_viejo:
-                continue
-            parte_imagen = parte_origen.related_part(rid_viejo)
-            rid_nuevo = parte_nueva.relate_to(parte_imagen, RT.IMAGE)
-            nodo.set(f"{_NS_REL}{atributo}", rid_nuevo)
-
-
-def _eliminar_diapositiva(prs, diapositiva):
-    """python-pptx no trae 'borrar diapositiva' -- hay que quitar su entrada
-    de sldIdLst y soltar la relacion en el part de la presentacion, si no
-    el archivo queda con una referencia rota."""
-    for id_slide in list(prs.slides._sldIdLst):
-        if prs.part.related_part(id_slide.rId) is diapositiva.part:
-            prs.part.drop_rel(id_slide.rId)
-            prs.slides._sldIdLst.remove(id_slide)
-            return
-
-
-def _duplicar_diapositiva(prs, diapositiva_origen):
-    nueva = prs.slides.add_slide(diapositiva_origen.slide_layout)
-    # add_slide() trae los placeholders vacios del layout -- no sirven,
-    # se quitan antes de copiar encima las formas reales.
-    for forma in list(nueva.shapes):
-        forma._element.getparent().remove(forma._element)
-    for forma_origen in diapositiva_origen.shapes:
-        copia = copy.deepcopy(forma_origen._element)
-        _remapear_imagenes(copia, diapositiva_origen.part, nueva.part)
-        nueva.shapes._spTree.append(copia)
-    return nueva
-
-
 def _llenar_diapositiva_contenido(diapositiva, entidad_nombre, dia_etiqueta, fotos):
-    _texto_forma(_forma_por_id(diapositiva, _ID_TITULO_ENTIDAD), entidad_nombre.title())
-    _texto_forma(_forma_por_id(diapositiva, _ID_DIA_CONTENIDO), dia_etiqueta)
+    texto_forma(forma_por_id(diapositiva, _ID_TITULO_ENTIDAD), entidad_nombre.title())
+    texto_forma(forma_por_id(diapositiva, _ID_DIA_CONTENIDO), dia_etiqueta)
 
     for i, (posicion, id_texto) in enumerate(_SLOTS_FOTO):
-        forma_texto = _forma_por_id(diapositiva, id_texto)
+        forma_texto = forma_por_id(diapositiva, id_texto)
         agregada = False
         if i < len(fotos):
             visita = fotos[i]["visita"]
@@ -195,9 +137,9 @@ def construir_presentacion(dia_texto, categoria_texto, fotos):
     diapositiva_contenido_base = prs.slides[2]
 
     dia_etiqueta = f"Día 1: {dia_texto}"
-    _texto_forma(_forma_por_id(diapositiva_portada, _ID_DIA_PORTADA), dia_etiqueta)
+    texto_forma(forma_por_id(diapositiva_portada, _ID_DIA_PORTADA), dia_etiqueta)
     _texto_subtitulo_portada(
-        _forma_por_id(diapositiva_portada, _ID_TITULO_PORTADA),
+        forma_por_id(diapositiva_portada, _ID_TITULO_PORTADA),
         f"Distribución para {categoria_texto.lower()} de atención médica",
     )
 
@@ -219,18 +161,18 @@ def construir_presentacion(dia_texto, categoria_texto, fotos):
         if not entidades:
             continue
 
-        diapositiva_region = _duplicar_diapositiva(prs, diapositiva_region_base)
-        _texto_forma(_forma_por_id(diapositiva_region, _ID_TITULO_REGION), region)
+        diapositiva_region = duplicar_diapositiva(prs, diapositiva_region_base)
+        texto_forma(forma_por_id(diapositiva_region, _ID_TITULO_REGION), region)
 
         for entidad_nombre in sorted(entidades):
             fotos_entidad = entidades[entidad_nombre]
             for inicio in range(0, len(fotos_entidad), len(_SLOTS_FOTO)):
                 grupo = fotos_entidad[inicio: inicio + len(_SLOTS_FOTO)]
-                diapositiva_contenido = _duplicar_diapositiva(prs, diapositiva_contenido_base)
+                diapositiva_contenido = duplicar_diapositiva(prs, diapositiva_contenido_base)
                 _llenar_diapositiva_contenido(diapositiva_contenido, entidad_nombre, dia_etiqueta, grupo)
 
-    _eliminar_diapositiva(prs, diapositiva_region_base)
-    _eliminar_diapositiva(prs, diapositiva_contenido_base)
+    eliminar_diapositiva(prs, diapositiva_region_base)
+    eliminar_diapositiva(prs, diapositiva_contenido_base)
 
     buffer = io.BytesIO()
     prs.save(buffer)

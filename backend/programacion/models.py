@@ -101,8 +101,8 @@ class ProgramacionVisita(models.Model):
     # tools/captura-programacion/.
     tipo_unidad_medica = models.CharField(max_length=100, blank=True)
     quien_recibe = models.CharField(max_length=150, blank=True)
-    telefono = models.CharField(max_length=20, blank=True)
-    correo = models.EmailField(blank=True)
+    telefono = models.CharField(max_length=100, blank=True)
+    correo = models.CharField(max_length=150, blank=True)
     # Granularidad de bloqueo sin definir del todo (blueprint-v01.md seccion 9,
     # pendiente #4 del diagrama ER) — por ahora es por fila; un bloqueo a nivel
     # Jornada completa quedaria como una operacion que setea este campo en lote.

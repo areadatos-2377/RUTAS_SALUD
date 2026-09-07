@@ -2,7 +2,16 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import '../styles/table.css';
 
-const FORM_VACIO = { clues: '', nombre: '', entidad: '', tipo_unidad_medica: '', municipio: '' };
+const FORM_VACIO = {
+  clues: '',
+  nombre: '',
+  entidad: '',
+  tipo_unidad_medica: '',
+  municipio: '',
+  quien_recibe: '',
+  telefono: '',
+  correo: '',
+};
 const NIVELES = ['PRIMER NIVEL', 'SEGUNDO NIVEL', 'TERCER NIVEL'];
 const NIVEL_BADGE = { 'PRIMER NIVEL': 'verde', 'SEGUNDO NIVEL': 'dorado', 'TERCER NIVEL': 'guinda' };
 
@@ -125,6 +134,18 @@ export default function UnidadesMedicasPage() {
         <div className="field">
           <label htmlFor="municipio">Municipio</label>
           <input id="municipio" value={form.municipio} onChange={(e) => setForm({ ...form, municipio: e.target.value })} />
+        </div>
+        <div className="field">
+          <label htmlFor="quienRecibe">¿Quién recibe?</label>
+          <input id="quienRecibe" maxLength={150} value={form.quien_recibe} onChange={(e) => setForm({ ...form, quien_recibe: e.target.value })} />
+        </div>
+        <div className="field">
+          <label htmlFor="telefonoContacto">Teléfono</label>
+          <input id="telefonoContacto" maxLength={100} value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
+        </div>
+        <div className="field">
+          <label htmlFor="correoContacto">Correo</label>
+          <input id="correoContacto" maxLength={150} value={form.correo} onChange={(e) => setForm({ ...form, correo: e.target.value })} />
         </div>
         <button className="btn-primary" type="submit" disabled={guardando}>
           {guardando ? 'Creando…' : '+ Nueva unidad'}
