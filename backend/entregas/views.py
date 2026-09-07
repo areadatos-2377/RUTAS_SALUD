@@ -9,17 +9,9 @@ from usuarios.models import Usuario
 from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
 
 from . import presentacion, storage
+from .fechas import formato_fecha_es
 from .models import Entrega, EvidenciaArchivo
 from .serializers import EntregaSerializer, EvidenciaArchivoConsultaSerializer, EvidenciaArchivoSerializer
-
-_MESES_ES = [
-    "enero", "febrero", "marzo", "abril", "mayo", "junio",
-    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-]
-
-
-def _formato_fecha_es(fecha):
-    return f"{fecha.day:02d} de {_MESES_ES[fecha.month - 1]} de {fecha.year}"
 
 
 class EntregaViewSet(viewsets.ModelViewSet):
@@ -161,7 +153,7 @@ class GenerarPresentacionView(APIView):
         if not fotos:
             return Response({"detail": "Ninguna de las fotos enviadas es válida."}, status=400)
 
-        dia_texto = _formato_fecha_es(jornada.fecha_inicio)
+        dia_texto = formato_fecha_es(jornada.fecha_inicio)
         buffer = presentacion.construir_presentacion(dia_texto, jornada.get_categoria_display(), fotos)
 
         respuesta = HttpResponse(

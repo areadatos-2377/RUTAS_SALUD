@@ -10,6 +10,8 @@ import CoordinadoresPage from './pages/CoordinadoresPage';
 import UnidadesMedicasPage from './pages/UnidadesMedicasPage';
 import UsuariosPage from './pages/UsuariosPage';
 import EvidenciaListaPage from './pages/EvidenciaListaPage';
+import PickingPackingPage from './pages/PickingPackingPage';
+import PickingPackingJornadaPage from './pages/PickingPackingJornadaPage';
 
 function RequireAuth({ children }) {
   const { usuario, cargando } = useAuth();
@@ -47,6 +49,8 @@ export default function App() {
           <Route path="jornadas" element={<JornadasPage />} />
           <Route path="jornadas/:id" element={<JornadaDetallePage />} />
           <Route path="evidencia" element={<EvidenciaListaPage />} />
+          <Route path="picking-packing" element={<PickingPackingPage />} />
+          <Route path="picking-packing/:id" element={<PickingPackingJornadaPage />} />
           <Route
             path="catalogos/coordinadores"
             element={

@@ -71,6 +71,17 @@ def construir_key(entrega, nombre_archivo: str) -> str:
     )
 
 
+def construir_key_picking_packing(jornada, entidad, fecha, nombre_archivo: str) -> str:
+    """Igual que construir_key, pero para evidencia de picking_packing.Evidencia
+    (por entidad y dia, sin unidad medica) -- prefijo propio para que no se
+    mezcle en el bucket con la evidencia de Distribucion."""
+    sufijo = uuid.uuid4().hex[:8]
+    return (
+        f"picking-packing/{jornada.id}_{_slug(jornada.nombre)}/{_slug(entidad.nombre)}/"
+        f"{fecha.isoformat()}/{sufijo}__{_nombre_seguro(nombre_archivo)}"
+    )
+
+
 def subir_evidencia(archivo, key: str) -> None:
     cliente = _cliente_s3()
     cliente.upload_fileobj(

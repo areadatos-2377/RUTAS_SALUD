@@ -28,6 +28,7 @@ pnpm-debug.log*
 
 # Memoria de trabajo personal con IA — no se comparte con el equipo
 .context/
+/planes de cambio/
 
 # Protocolo de bitacora/multi-agente: ya no se usa en este proyecto
 AGENTS.md

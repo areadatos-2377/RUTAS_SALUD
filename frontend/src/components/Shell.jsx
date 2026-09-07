@@ -30,6 +30,12 @@ const ICONOS = {
       <path d="M8 6l1.5-2.5h5L16 6" />
     </svg>
   ),
+  pickingPacking: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8l9-5 9 5-9 5-9-5Z" />
+      <path d="M3 8v8l9 5 9-5V8M12 13v8" />
+    </svg>
+  ),
   salir: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -76,6 +82,9 @@ export default function Shell() {
           </NavLink>
           <NavLink to="/evidencia" className="nav-item">
             {ICONOS.evidencia} Evidencia
+          </NavLink>
+          <NavLink to="/picking-packing" className="nav-item">
+            {ICONOS.pickingPacking} Picking & Packing
           </NavLink>
           {(usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN) && (
             <>
