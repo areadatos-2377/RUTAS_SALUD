@@ -1,0 +1,53 @@
+# .dockerignore raíz del monorepo.
+#
+# IMPORTANTE: `data/raw/CLUES_IMB.xlsx` y
+# `data/raw/ejemplo_6ta_distribucion_BC.xlsx` deben quedar incluidos en la
+# imagen del backend -- `backend/catalogos/management/commands/cargar_clues.py`
+# los lee desde disco en tiempo de ejecución (rutas relativas a `data/raw/`
+# desde la raíz del repo) para poblar los catálogos de `Entidad` y
+# `UnidadMedica`. Si `data/raw/` no se copia al contenedor, el
+# preDeployCommand `python manage.py cargar_clues` falla con
+# "No se encontro ... data/raw/CLUES_IMB.xlsx" y los catálogos quedan
+# vacíos. Por eso NO se ignora `data/` aquí.
+#
+# Ver backend/README.md ("Catálogo de CLUES (carga mensual)") y
+# docs/bitacora-problemas.md para el contexto completo.
+
+# Entornos virtuales / dependencias -- se reinstalan en el build, no hace
+# falta copiarlas desde el contexto.
+.venv/
+venv/
+env/
+node_modules/
+
+# Artefactos de build de frontend -- se regeneran con `npm run build`.
+frontend/dist/
+frontend/.vite/
+
+# Bases de datos locales / archivos generados en desarrollo.
+db.sqlite3
+staticfiles/
+media/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Secrets locales -- nunca deben llegar a una imagen.
+.env
+.env.*
+!.env.example
+
+# Control de versiones y editores.
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+
+# Documentación / material que no hace falta en el contenedor en runtime.
+blueprint/
+docs/
+"pantalla captura/"
+tools/

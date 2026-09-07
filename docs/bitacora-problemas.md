@@ -10,6 +10,31 @@ que realmente pasaba) → **Solución** (qué se cambió) → **Cómo se detect�
 
 ---
 
+## Catálogos de Entidad/UnidadMedica vacíos en producción — preDeployCommand incompleto
+
+**Síntoma:** Las tablas `catalogos_entidad` y `catalogos_unidadmedica`
+existen en la base de datos de producción (las migraciones sí corren),
+pero están vacías. `data/raw/CLUES_IMB.xlsx` y
+`data/raw/ejemplo_6ta_distribucion_BC.xlsx` sí están en el repo.
+
+**Causa raíz:** El `preDeployCommand` del servicio RUTAS_SALUD_BACKEND en
+Railway solo ejecutaba `python manage.py migrate`. Nunca se agregó
+`python manage.py cargar_clues` (el comando que hace el upsert de
+`Entidad`/`UnidadMedica` desde los Excel de `data/raw/`) — crear las
+tablas no las llena solo.
+
+**Solución:** Actualizar el `preDeployCommand` del servicio en Railway a
+`python manage.py migrate && python manage.py cargar_clues`, y agregar un
+`.dockerignore` en la raíz del repo que preserve explícitamente `data/`
+para asegurar que los Excel lleguen al contenedor durante el build. Ver
+`backend/README.md` sección "Catálogo de CLUES (carga mensual)".
+
+**Cómo se detectó:** Los endpoints `/api/entidades/` y
+`/api/unidades-medicas/` devolvían listas vacías en producción pese a que
+el comando funcionaba correctamente en local.
+
+---
+
 ## 2026-08-30 — "Tu sesión expiró" al hacer login en producción (causa raíz real)
 
 **Síntoma:** Al iniciar sesión en producción con credenciales correctas,

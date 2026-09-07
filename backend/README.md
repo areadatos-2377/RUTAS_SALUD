@@ -65,6 +65,22 @@ modificarse de forma independiente.
 
 Es **seguro re-ejecutarlo** las veces que haga falta: agrega los CLUES nuevos, actualiza los que cambiaron de nombre/tipo/municipio, y **nunca toca ni borra** las unidades con `origen=manual` (las capturadas a mano porque su CLUES no estaba en el catálogo oficial — ver `blueprint/herramienta-captura-programacion-plan-v00.md`). Tampoco borra CLUES que hayan desaparecido del nuevo Excel; darlas de baja formalmente es una decisión de negocio aparte.
 
+### En Railway (RUTAS_SALUD_BACKEND)
+
+El `preDeployCommand` del servicio en Railway debe ejecutar **ambos**
+comandos, no solo `migrate`, o los catálogos de `Entidad`/`UnidadMedica`
+quedan vacíos en cada deploy nuevo (las tablas se crean pero nunca se
+llenan):
+
+```
+python manage.py migrate && python manage.py cargar_clues
+```
+
+Esto requiere que `data/raw/CLUES_IMB.xlsx` y
+`data/raw/ejemplo_6ta_distribucion_BC.xlsx` se copien al contenedor
+durante el build (ver `.dockerignore` en la raíz del repo, que
+explícitamente no excluye `data/`).
+
 ## Pendientes conocidos (no bloquean lo ya construido)
 
 - Autenticación de la API (por ahora `SessionAuthentication` vía DRF/cookies; falta decidir si se agrega JWT cuando exista el frontend React, para no depender de cookies same-site).
