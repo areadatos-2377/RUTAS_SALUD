@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, Min, OuterRef
 from rest_framework import permissions, serializers, viewsets
 
 from catalogos.models import UnidadMedica
@@ -9,6 +9,13 @@ from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramac
 
 from .models import Jornada, ProgramacionVisita, Ruta
 from .serializers import JornadaSerializer, ProgramacionVisitaSerializer, RutaSerializer
+
+
+def fecha_programada_inicial(jornada, fecha_referencia, fecha_base):
+    if fecha_referencia is None or fecha_base is None:
+        return None
+    fecha_programada = jornada.fecha_inicio + (fecha_referencia - fecha_base)
+    return min(fecha_programada, jornada.fecha_fin)
 
 
 class JornadaViewSet(viewsets.ModelViewSet):
@@ -22,11 +29,20 @@ class JornadaViewSet(viewsets.ModelViewSet):
         jornada = serializer.save()
         niveles_validos = Jornada.NIVELES_POR_CATEGORIA[jornada.categoria]
         unidades = UnidadMedica.objects.filter(nivel_atencion__in=niveles_validos)
+        fecha_base = unidades.aggregate(
+            fecha=Min("fecha_programacion_referencia")
+        )["fecha"]
         ProgramacionVisita.objects.bulk_create(
             [
                 ProgramacionVisita(
                     jornada=jornada,
                     unidad_medica=unidad,
+                    ruta_numero=unidad.ruta_programacion,
+                    fecha_distribucion_programada=fecha_programada_inicial(
+                        jornada,
+                        unidad.fecha_programacion_referencia,
+                        fecha_base,
+                    ),
                     tipo_unidad_medica=unidad.tipo_unidad_medica,
                     quien_recibe=unidad.quien_recibe,
                     telefono=unidad.telefono,

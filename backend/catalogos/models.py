@@ -47,6 +47,8 @@ class UnidadMedica(models.Model):
     quien_recibe = models.CharField(max_length=150, blank=True)
     telefono = models.CharField(max_length=100, blank=True)
     correo = models.CharField(max_length=150, blank=True)
+    ruta_programacion = models.CharField(max_length=50, blank=True)
+    fecha_programacion_referencia = models.DateField(null=True, blank=True)
     origen = models.CharField(max_length=20, choices=ORIGEN_CHOICES, default=ORIGEN_MANUAL)
     # Viene tal cual de la columna "NIVEL ATENCION" de CLUES_IMB.xlsx. El
     # catalogo mensual solo importa PRIMER/SEGUNDO/TERCER NIVEL (excluye
