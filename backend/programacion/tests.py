@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -22,6 +24,8 @@ class PrecargaJornadaTests(APITestCase):
 			quien_recibe="Contacto del catálogo",
 			telefono="312 123 4567 EXT 8",
 			correo="farmacia@ejemplo.test - almacen@ejemplo.test",
+			ruta_programacion="1",
+			fecha_programacion_referencia=date(2026, 8, 20),
 			nivel_atencion=UnidadMedica.NIVEL_PRIMER,
 		)
 		self.unidad_jalisco = UnidadMedica.objects.create(
@@ -30,6 +34,26 @@ class PrecargaJornadaTests(APITestCase):
 			entidad=self.jalisco,
 			tipo_unidad_medica="CENTRO DE SALUD",
 			municipio="Guadalajara",
+			ruta_programacion="2",
+			fecha_programacion_referencia=date(2026, 8, 22),
+			nivel_atencion=UnidadMedica.NIVEL_PRIMER,
+		)
+		self.unidad_tardia = UnidadMedica.objects.create(
+			clues="JCSSA000002",
+			nombre="Centro de Salud Jalisco tardío",
+			entidad=self.jalisco,
+			tipo_unidad_medica="CENTRO DE SALUD",
+			municipio="Zapopan",
+			ruta_programacion="9",
+			fecha_programacion_referencia=date(2026, 9, 10),
+			nivel_atencion=UnidadMedica.NIVEL_PRIMER,
+		)
+		self.unidad_sin_fecha = UnidadMedica.objects.create(
+			clues="JCSSA000003",
+			nombre="Centro de Salud sin fecha",
+			entidad=self.jalisco,
+			tipo_unidad_medica="CENTRO DE SALUD",
+			ruta_programacion="11",
 			nivel_atencion=UnidadMedica.NIVEL_PRIMER,
 		)
 		self.hospital = UnidadMedica.objects.create(
@@ -59,8 +83,8 @@ class PrecargaJornadaTests(APITestCase):
 				"nombre": "Jornada de prueba",
 				"tipo": Jornada.TIPO_ORDINARIA,
 				"categoria": Jornada.CATEGORIA_PRIMER_NIVEL,
-				"fecha_inicio": "2026-09-01",
-				"fecha_fin": "2026-09-05",
+				"fecha_inicio": "2026-09-09",
+				"fecha_fin": "2026-09-25",
 			},
 			format="json",
 		)
@@ -71,15 +95,41 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
 		jornada = Jornada.objects.get(pk=respuesta.data["id"])
 		visitas = ProgramacionVisita.objects.filter(jornada=jornada)
-		self.assertEqual(visitas.count(), 2)
+		self.assertEqual(visitas.count(), 4)
 		self.assertFalse(visitas.filter(unidad_medica=self.hospital).exists())
 		fila = visitas.get(unidad_medica=self.unidad_colima)
-		self.assertIsNone(fila.fecha_distribucion_programada)
-		self.assertEqual(fila.ruta_numero, "")
+		self.assertEqual(fila.fecha_distribucion_programada, date(2026, 9, 9))
+		self.assertEqual(fila.ruta_numero, "1")
 		self.assertEqual(fila.tipo_unidad_medica, "CENTRO DE SALUD")
 		self.assertEqual(fila.quien_recibe, "Contacto del catálogo")
 		self.assertEqual(fila.telefono, "312 123 4567 EXT 8")
 		self.assertEqual(fila.correo, "farmacia@ejemplo.test - almacen@ejemplo.test")
+		self.assertEqual(
+			visitas.get(unidad_medica=self.unidad_jalisco).fecha_distribucion_programada,
+			date(2026, 9, 11),
+		)
+		self.assertEqual(
+			visitas.get(unidad_medica=self.unidad_tardia).fecha_distribucion_programada,
+			date(2026, 9, 25),
+		)
+		self.assertIsNone(
+			visitas.get(unidad_medica=self.unidad_sin_fecha).fecha_distribucion_programada
+		)
+
+	def test_precarga_deja_fechas_vacias_si_no_hay_referencias(self):
+		UnidadMedica.objects.filter(nivel_atencion=UnidadMedica.NIVEL_PRIMER).update(
+			fecha_programacion_referencia=None
+		)
+
+		respuesta = self.crear_jornada()
+
+		self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+		self.assertFalse(
+			ProgramacionVisita.objects.filter(
+				jornada_id=respuesta.data["id"],
+				fecha_distribucion_programada__isnull=False,
+			).exists()
+		)
 
 	def test_restriccion_impide_duplicar_clues_en_jornada(self):
 		respuesta = self.crear_jornada()
@@ -115,7 +165,7 @@ class PrecargaJornadaTests(APITestCase):
 			f"/api/programacion-visitas/{fila.id}/",
 			{
 				"ruta_numero": "Ruta 3",
-				"fecha_distribucion_programada": "2026-09-02",
+				"fecha_distribucion_programada": "2026-09-10",
 				"claves_a_desplazar": 12,
 				"quien_recibe": "Responsable de unidad",
 				"telefono": "312 765 4321 EXT 20",
@@ -127,10 +177,20 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(editada.status_code, status.HTTP_200_OK)
 		fila.refresh_from_db()
 		self.assertEqual(fila.ruta_numero, "Ruta 3")
+		self.assertEqual(fila.fecha_distribucion_programada, date(2026, 9, 10))
 		self.assertEqual(fila.claves_a_desplazar, 12)
 		self.assertEqual(fila.quien_recibe, "Responsable de unidad")
 		self.assertEqual(fila.telefono, "312 765 4321 EXT 20")
 		self.assertEqual(fila.correo, "contacto actualizado")
+
+		fuera_de_periodo = self.client.patch(
+			f"/api/programacion-visitas/{fila.id}/",
+			{"fecha_distribucion_programada": "2026-09-26"},
+			format="json",
+		)
+		self.assertEqual(fuera_de_periodo.status_code, status.HTTP_400_BAD_REQUEST)
+		fila.refresh_from_db()
+		self.assertEqual(fila.fecha_distribucion_programada, date(2026, 9, 10))
 
 		eliminada = self.client.delete(f"/api/programacion-visitas/{fila.id}/")
 		self.assertEqual(eliminada.status_code, status.HTTP_204_NO_CONTENT)

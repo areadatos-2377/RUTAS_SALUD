@@ -21,6 +21,7 @@ que este comando deba hacer solo.
 
 import re
 import unicodedata
+from datetime import date, datetime
 from pathlib import Path
 
 import openpyxl
@@ -54,6 +55,13 @@ COLUMNAS_CONTACTO = {
     "telefono": "TELÉFONO",
     "correo": "CORREO",
 }
+
+FORMATOS_FECHA_PROGRAMACION = (
+    "%A, %B %d, %Y",
+    "%Y-%m-%d",
+    "%d/%m/%Y",
+    "%m/%d/%Y",
+)
 
 ALIAS_ENTIDAD = {
     "MEXICO": "ESTADO DE MEXICO",
@@ -92,6 +100,23 @@ def mapear_tipo_unidad_medica(nombre_tipologia):
 
 def texto_celda(valor):
     return "" if valor is None else str(valor).strip()
+
+
+def fecha_programacion_celda(valor):
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    if not isinstance(valor, str):
+        return None
+
+    texto = valor.strip()
+    for formato in FORMATOS_FECHA_PROGRAMACION:
+        try:
+            return datetime.strptime(texto, formato).date()
+        except ValueError:
+            continue
+    return None
 
 
 class DryRunRollback(Exception):
@@ -179,6 +204,24 @@ class Command(BaseCommand):
         ws = wb["BD_IMB"]
         headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
         idx = {h: i for i, h in enumerate(headers)}
+        columnas_requeridas = {
+            "NIVEL ATENCION",
+            "ESTATUS DE OPERACION",
+            "ENTIDAD",
+            "CLUES",
+            "NOMBRE DE TIPOLOGIA",
+            "NOMBRE DE LA UNIDAD",
+            "MUNICIPIO",
+            *COLUMNAS_CONTACTO.values(),
+            "RUTA",
+            "FECHA PROG",
+        }
+        columnas_faltantes = sorted(columnas_requeridas - idx.keys())
+        if columnas_faltantes:
+            raise CommandError(
+                "Faltan columnas requeridas en BD_IMB: "
+                + ", ".join(columnas_faltantes)
+            )
 
         # Una sola consulta para traer TODAS las unidades existentes (en vez
         # de una consulta por fila) -- con ~10,500 filas del Excel, hacer
@@ -196,6 +239,8 @@ class Command(BaseCommand):
             "quien_recibe",
             "telefono",
             "correo",
+            "ruta_programacion",
+            "fecha_programacion_referencia",
             "origen",
             "nivel_atencion",
         ]
@@ -234,6 +279,10 @@ class Command(BaseCommand):
                 "quien_recibe": texto_celda(row[idx[COLUMNAS_CONTACTO["quien_recibe"]]]),
                 "telefono": texto_celda(row[idx[COLUMNAS_CONTACTO["telefono"]]]),
                 "correo": texto_celda(row[idx[COLUMNAS_CONTACTO["correo"]]]),
+                "ruta_programacion": texto_celda(row[idx["RUTA"]]),
+                "fecha_programacion_referencia": fecha_programacion_celda(
+                    row[idx["FECHA PROG"]]
+                ),
                 "origen": UnidadMedica.ORIGEN_CATALOGO_MENSUAL,
                 "nivel_atencion": nivel_atencion,
             }

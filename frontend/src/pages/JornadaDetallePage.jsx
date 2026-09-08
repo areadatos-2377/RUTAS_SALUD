@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { useAuth, ROLES } from '../auth/AuthContext';
@@ -6,23 +6,47 @@ import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
 import { exportarProgramacionExcel } from '../utils/exportarProgramacionExcel';
 import EvidenciaPanel from './EvidenciaPanel';
 import EvidenciaVistaRapida from './EvidenciaVistaRapida';
+import FiltroColumna from './FiltroColumna';
 import '../styles/table.css';
 import './JornadaDetallePage.css';
 
 const TIPO_LABEL = { ordinaria: 'Ordinaria', extraordinaria: 'Extraordinaria', emergencia: 'Emergencia' };
 
-function valoresEditables(visita) {
-  return {
-    ruta_numero: visita.ruta_numero || '',
-    fecha_distribucion_programada: visita.fecha_distribucion_programada || '',
-    claves_a_desplazar: visita.claves_a_desplazar ?? 0,
-    piezas_medicamento: visita.piezas_medicamento ?? 0,
-    piezas_material_curacion: visita.piezas_material_curacion ?? 0,
-    tipo_unidad_medica: visita.tipo_unidad_medica || '',
-    quien_recibe: visita.quien_recibe || '',
-    telefono: visita.telefono || '',
-    correo: visita.correo || '',
-  };
+// Una sola fuente de verdad para las 12 columnas de la tabla -- de aqui
+// salen el encabezado, el filtro por columna, la edicion en linea (doble
+// clic) y las opciones del selector de "editar en masa". `editable` marca
+// las mismas 8 columnas que ya acepta el PATCH de programacion-visitas
+// (ProgramacionVisitaSerializer.read_only_fields tiene las otras 4).
+const COLUMNAS = [
+  { key: 'unidad_medica', label: 'CLUES', editable: false },
+  { key: 'unidad_medica_nombre', label: 'Nombre de la unidad', editable: false, clase: 'nombre' },
+  { key: 'unidad_medica_municipio', label: 'Municipio', editable: false, vacio: '—' },
+  { key: 'tipo_unidad_medica', label: 'Tipo de unidad', editable: false, vacio: '—' },
+  { key: 'ruta_numero', label: 'Ruta', editable: true, tipo: 'texto', vacio: 'Pendiente', maxLength: 50 },
+  { key: 'fecha_distribucion_programada', label: 'Fecha programada', editable: true, tipo: 'fecha', vacio: 'Pendiente' },
+  { key: 'claves_a_desplazar', label: 'Claves', editable: true, tipo: 'numero' },
+  { key: 'piezas_medicamento', label: 'Pzas. medicamento', editable: true, tipo: 'numero' },
+  { key: 'piezas_material_curacion', label: 'Pzas. material', editable: true, tipo: 'numero' },
+  { key: 'quien_recibe', label: 'Recibe', editable: true, tipo: 'texto', vacio: '—', maxLength: 150 },
+  { key: 'telefono', label: 'Teléfono', editable: true, tipo: 'texto', vacio: '—', maxLength: 100 },
+  { key: 'correo', label: 'Correo', editable: true, tipo: 'texto', vacio: '—', maxLength: 150 },
+];
+const COLUMNAS_EDITABLES = COLUMNAS.filter((c) => c.editable);
+
+// Mismo texto que ya se ve en la celda (con su "Pendiente"/"—" cuando esta
+// vacio) -- se usa tanto para pintar la tabla como para armar la lista de
+// valores unicos de cada filtro, para que lo que se ve y lo que se filtra
+// sea exactamente lo mismo.
+function valorMostrado(visita, columna) {
+  const crudo = visita[columna.key];
+  if (crudo === null || crudo === undefined || crudo === '') return columna.vacio ?? '';
+  return String(crudo);
+}
+
+function valorCrudoParaEditar(visita, columna) {
+  const crudo = visita[columna.key];
+  if (crudo === null || crudo === undefined) return columna.tipo === 'numero' ? '0' : '';
+  return String(crudo);
 }
 
 export default function JornadaDetallePage() {
@@ -40,10 +64,6 @@ export default function JornadaDetallePage() {
   const [visitas, setVisitas] = useState(null);
   const [busqueda, setBusqueda] = useState('');
   const [error, setError] = useState(null);
-  const [editandoId, setEditandoId] = useState(null);
-  const [formulario, setFormulario] = useState(null);
-  const [guardando, setGuardando] = useState(false);
-  const [errorEdicion, setErrorEdicion] = useState(null);
   const [exportando, setExportando] = useState(false);
   const [visitaEvidencia, setVisitaEvidencia] = useState(null);
   const [vistaRapida, setVistaRapida] = useState(null);
@@ -55,6 +75,25 @@ export default function JornadaDetallePage() {
   const [fotosSeleccionadas, setFotosSeleccionadas] = useState({});
   const [generandoPresentacion, setGenerandoPresentacion] = useState(false);
   const [autoSeleccionando, setAutoSeleccionando] = useState(false);
+
+  // Filtros por columna estilo Excel: { [campo]: Set<valorMostrado> }. Un
+  // campo ausente = sin filtro (se muestran todos los valores de esa
+  // columna). Se combinan entre si con AND ("anidados"), igual que la
+  // busqueda libre de mas abajo.
+  const [filtrosColumna, setFiltrosColumna] = useState({});
+  const [filtroAbierto, setFiltroAbierto] = useState(null);
+
+  // Edicion en linea (doble clic) -- reemplaza al viejo boton "Editar" +
+  // formulario aparte. Solo una celda a la vez.
+  const [celdaEditando, setCeldaEditando] = useState(null); // { visitaId, campo } | null
+  const [valorEdicion, setValorEdicion] = useState('');
+
+  // Edicion masiva: cambia un campo a TODAS las filas que el filtro actual
+  // deja visibles en ese momento (no hay una seleccion aparte por
+  // checkbox -- el filtro ya filtrado ES la seleccion).
+  const [masivoCampo, setMasivoCampo] = useState(COLUMNAS_EDITABLES[0].key);
+  const [masivoValor, setMasivoValor] = useState('');
+  const [aplicandoMasivo, setAplicandoMasivo] = useState(false);
 
   useEffect(() => {
     api.get(`/api/jornadas/${id}/`)
@@ -76,56 +115,17 @@ export default function JornadaDetallePage() {
     if (!entidadId) return;
     setVisitas(null);
     setError(null);
+    setFiltrosColumna({});
     api.getAll(`/api/programacion-visitas/?jornada=${id}&entidad=${entidadId}`)
       .then(setVisitas)
       .catch(() => setError('No se pudieron cargar las unidades de la distribución.'));
   }, [id, entidadId]);
-
-  function onEditar(visita) {
-    setEditandoId(visita.id);
-    setFormulario(valoresEditables(visita));
-    setErrorEdicion(null);
-  }
-
-  function onCancelarEdicion() {
-    setEditandoId(null);
-    setFormulario(null);
-    setErrorEdicion(null);
-  }
-
-  async function onGuardar(e) {
-    e.preventDefault();
-    setGuardando(true);
-    setErrorEdicion(null);
-    try {
-      const cuerpo = {
-        ...formulario,
-        fecha_distribucion_programada: formulario.fecha_distribucion_programada || null,
-        claves_a_desplazar: Number(formulario.claves_a_desplazar) || 0,
-        piezas_medicamento: Number(formulario.piezas_medicamento) || 0,
-        piezas_material_curacion: Number(formulario.piezas_material_curacion) || 0,
-      };
-      const actualizada = await api.patch(`/api/programacion-visitas/${editandoId}/`, cuerpo);
-      setVisitas((actuales) => actuales.map((visita) => (
-        visita.id === actualizada.id ? actualizada : visita
-      )));
-      onCancelarEdicion();
-    } catch (err) {
-      const detalle = err instanceof ApiError && err.data
-        ? err.data.non_field_errors?.[0] || err.data.detail
-        : null;
-      setErrorEdicion(detalle || 'No se pudieron guardar los cambios.');
-    } finally {
-      setGuardando(false);
-    }
-  }
 
   async function onEliminar(visita) {
     if (!confirm(`¿Eliminar ${visita.unidad_medica} de esta distribución?`)) return;
     try {
       await api.del(`/api/programacion-visitas/${visita.id}/`);
       setVisitas((actuales) => actuales.filter((fila) => fila.id !== visita.id));
-      if (editandoId === visita.id) onCancelarEdicion();
     } catch {
       setError('No se pudo eliminar la unidad de la distribución.');
     }
@@ -248,16 +248,116 @@ export default function JornadaDetallePage() {
     }
   }
 
+  // Edicion en linea -----------------------------------------------------
+
+  function iniciarEdicion(visita, columna) {
+    if (!columna.editable || !puedeEscribir) return;
+    setCeldaEditando({ visitaId: visita.id, campo: columna.key });
+    setValorEdicion(valorCrudoParaEditar(visita, columna));
+  }
+
+  function cancelarEdicionCelda() {
+    setCeldaEditando(null);
+  }
+
+  async function confirmarEdicionCelda(visita, columna) {
+    setCeldaEditando(null);
+    const valorFinal = columna.tipo === 'numero'
+      ? (Number(valorEdicion) || 0)
+      : columna.tipo === 'fecha'
+        ? (valorEdicion || null)
+        : valorEdicion;
+    try {
+      const actualizada = await api.patch(`/api/programacion-visitas/${visita.id}/`, { [columna.key]: valorFinal });
+      setVisitas((actuales) => actuales.map((v) => (v.id === actualizada.id ? actualizada : v)));
+    } catch (err) {
+      const detalle = err instanceof ApiError && err.data
+        ? err.data[columna.key]?.[0] || err.data.non_field_errors?.[0] || err.data.detail
+        : null;
+      setError(detalle || 'No se pudo guardar el cambio.');
+    }
+  }
+
+  function onTeclaCelda(e) {
+    if (e.key === 'Enter') e.currentTarget.blur();
+    else if (e.key === 'Escape') cancelarEdicionCelda();
+  }
+
+  // Filtros por columna ----------------------------------------------------
+
+  const valoresUnicosPorColumna = useMemo(() => {
+    const mapa = {};
+    for (const columna of COLUMNAS) {
+      const set = new Set();
+      for (const visita of visitas || []) set.add(valorMostrado(visita, columna));
+      mapa[columna.key] = Array.from(set).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    }
+    return mapa;
+  }, [visitas]);
+
+  function onAplicarFiltroColumna(campo, nuevoSet) {
+    setFiltrosColumna((actual) => {
+      const copia = { ...actual };
+      if (nuevoSet) copia[campo] = nuevoSet;
+      else delete copia[campo];
+      return copia;
+    });
+  }
+
   const termino = busqueda.trim().toLocaleLowerCase('es');
   const filasVisibles = visitas?.filter((visita) => {
-    if (!termino) return true;
-    return [
-      visita.unidad_medica,
-      visita.unidad_medica_nombre,
-      visita.unidad_medica_municipio,
-      visita.ruta_numero,
-    ].some((valor) => String(valor || '').toLocaleLowerCase('es').includes(termino));
+    if (termino) {
+      const coincideTexto = [
+        visita.unidad_medica,
+        visita.unidad_medica_nombre,
+        visita.unidad_medica_municipio,
+        visita.ruta_numero,
+      ].some((valor) => String(valor || '').toLocaleLowerCase('es').includes(termino));
+      if (!coincideTexto) return false;
+    }
+    return COLUMNAS.every((columna) => {
+      const set = filtrosColumna[columna.key];
+      if (!set) return true;
+      return set.has(valorMostrado(visita, columna));
+    });
   });
+
+  // Edicion masiva -----------------------------------------------------
+
+  const columnaMasiva = COLUMNAS_EDITABLES.find((c) => c.key === masivoCampo);
+
+  async function onAplicarMasivo() {
+    const ids = (filasVisibles || []).map((v) => v.id);
+    if (ids.length === 0) return;
+    const valorFinal = columnaMasiva.tipo === 'numero'
+      ? (Number(masivoValor) || 0)
+      : columnaMasiva.tipo === 'fecha'
+        ? (masivoValor || null)
+        : masivoValor;
+    const etiquetaValor = masivoValor || '(vacío)';
+    if (!confirm(
+      `¿Cambiar "${columnaMasiva.label}" a "${etiquetaValor}" en ${ids.length} unidad${ids.length === 1 ? '' : 'es'}? `
+      + 'No se puede deshacer.',
+    )) return;
+
+    setAplicandoMasivo(true);
+    setError(null);
+    try {
+      const resp = await api.post('/api/programacion-visitas/actualizar-masivo/', {
+        ids, campo: masivoCampo, valor: valorFinal,
+      });
+      const idsSet = new Set(ids);
+      setVisitas((actuales) => actuales.map((v) => (idsSet.has(v.id) ? { ...v, [masivoCampo]: valorFinal } : v)));
+      if (resp.actualizados < ids.length) {
+        setError(`Se actualizaron ${resp.actualizados} de ${ids.length} unidades (las demás no te pertenecen).`);
+      }
+    } catch (err) {
+      const detalle = err instanceof ApiError && err.data ? err.data.valor?.[0] || err.data.detail : null;
+      setError(detalle || 'No se pudo aplicar el cambio masivo.');
+    } finally {
+      setAplicandoMasivo(false);
+    }
+  }
 
   const entidadSeleccionada = entidades.find((entidad) => String(entidad.id) === entidadId);
   const nombreEntidad = usuario?.rol === ROLES.USUARIO_ENTIDAD
@@ -337,54 +437,27 @@ export default function JornadaDetallePage() {
       {error && <p className="login-error" style={{ maxWidth: 520 }}>{error}</p>}
       {visitas === null && !error && <p className="tabla-cargando">Cargando unidades…</p>}
 
-      {editandoId && formulario && (
-        <form className="panel-form jornada-editor" onSubmit={onGuardar}>
-          <div className="jornada-editor__unidad">
-            <span>{visitas.find((visita) => visita.id === editandoId)?.unidad_medica}</span>
-            <strong>{visitas.find((visita) => visita.id === editandoId)?.unidad_medica_nombre}</strong>
-          </div>
-          <div className="field">
-            <label htmlFor="rutaNumero">Ruta</label>
-            <input id="rutaNumero" value={formulario.ruta_numero} onChange={(e) => setFormulario({ ...formulario, ruta_numero: e.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="fechaProgramada">Fecha programada</label>
-            <input id="fechaProgramada" type="date" min={jornada?.fecha_inicio} max={jornada?.fecha_fin} value={formulario.fecha_distribucion_programada} onChange={(e) => setFormulario({ ...formulario, fecha_distribucion_programada: e.target.value })} />
-          </div>
-          <div className="field field-numero">
-            <label htmlFor="claves">Claves</label>
-            <input id="claves" type="number" min="0" value={formulario.claves_a_desplazar} onChange={(e) => setFormulario({ ...formulario, claves_a_desplazar: e.target.value })} />
-          </div>
-          <div className="field field-numero">
-            <label htmlFor="medicamento">Piezas medicamento</label>
-            <input id="medicamento" type="number" min="0" value={formulario.piezas_medicamento} onChange={(e) => setFormulario({ ...formulario, piezas_medicamento: e.target.value })} />
-          </div>
-          <div className="field field-numero">
-            <label htmlFor="material">Piezas material</label>
-            <input id="material" type="number" min="0" value={formulario.piezas_material_curacion} onChange={(e) => setFormulario({ ...formulario, piezas_material_curacion: e.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="tipoUnidad">Tipo de unidad</label>
-            <input id="tipoUnidad" value={formulario.tipo_unidad_medica} disabled title="Viene del catálogo de unidades médicas, no se puede editar aquí" />
-          </div>
-          <div className="field">
-            <label htmlFor="recibe">¿Quién recibe?</label>
-            <input id="recibe" maxLength={150} value={formulario.quien_recibe} onChange={(e) => setFormulario({ ...formulario, quien_recibe: e.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="telefono">Teléfono</label>
-            <input id="telefono" maxLength={100} value={formulario.telefono} onChange={(e) => setFormulario({ ...formulario, telefono: e.target.value })} />
-          </div>
-          <div className="field">
-            <label htmlFor="correo">Correo</label>
-            <input id="correo" maxLength={150} value={formulario.correo} onChange={(e) => setFormulario({ ...formulario, correo: e.target.value })} />
-          </div>
-          <div className="jornada-editor__actions">
-            <button className="btn-primary" type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
-            <button className="btn-ghost" type="button" onClick={onCancelarEdicion}>Cancelar</button>
-          </div>
-          {errorEdicion && <p className="login-error">{errorEdicion}</p>}
-        </form>
+      {puedeEscribir && visitas && (
+        <div className="jornada-masivo">
+          <span className="jornada-masivo__etiqueta">Editar en masa las filas visibles:</span>
+          <select value={masivoCampo} onChange={(e) => { setMasivoCampo(e.target.value); setMasivoValor(''); }}>
+            {COLUMNAS_EDITABLES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+          {columnaMasiva.tipo === 'fecha' ? (
+            <input type="date" min={jornada?.fecha_inicio} max={jornada?.fecha_fin} value={masivoValor} onChange={(e) => setMasivoValor(e.target.value)} />
+          ) : columnaMasiva.tipo === 'numero' ? (
+            <input type="number" min="0" value={masivoValor} onChange={(e) => setMasivoValor(e.target.value)} />
+          ) : (
+            <input type="text" maxLength={columnaMasiva.maxLength} placeholder="Valor nuevo" value={masivoValor} onChange={(e) => setMasivoValor(e.target.value)} />
+          )}
+          <button
+            className="btn-primary"
+            onClick={onAplicarMasivo}
+            disabled={aplicandoMasivo || !filasVisibles || filasVisibles.length === 0}
+          >
+            {aplicandoMasivo ? 'Aplicando…' : `Aplicar a las ${filasVisibles?.length ?? 0} visibles`}
+          </button>
+        </div>
       )}
 
       {filasVisibles && (
@@ -392,44 +465,77 @@ export default function JornadaDetallePage() {
           <table>
             <thead>
               <tr>
-                <th>CLUES</th>
-                <th>Nombre de la unidad</th>
-                <th>Municipio</th>
-                <th>Tipo de unidad</th>
-                <th>Ruta</th>
-                <th>Fecha programada</th>
-                <th>Claves</th>
-                <th>Pzas. medicamento</th>
-                <th>Pzas. material</th>
-                <th>Recibe</th>
-                <th>Teléfono</th>
-                <th>Correo</th>
+                {COLUMNAS.map((columna) => (
+                  <th key={columna.key}>
+                    {columna.label}
+                    <FiltroColumna
+                      label={columna.label}
+                      valores={valoresUnicosPorColumna[columna.key] || []}
+                      seleccionActiva={filtrosColumna[columna.key]}
+                      abierto={filtroAbierto === columna.key}
+                      onAbrir={() => setFiltroAbierto(columna.key)}
+                      onCerrar={() => setFiltroAbierto((actual) => (actual === columna.key ? null : actual))}
+                      onAplicar={(nuevoSet) => onAplicarFiltroColumna(columna.key, nuevoSet)}
+                    />
+                  </th>
+                ))}
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {filasVisibles.length === 0 && (
-                <tr><td colSpan={13} className="tabla-vacia">No hay unidades que coincidan.</td></tr>
+                <tr><td colSpan={COLUMNAS.length + 1} className="tabla-vacia">No hay unidades que coincidan.</td></tr>
               )}
               {filasVisibles.map((visita) => (
-                <tr key={visita.id} className={editandoId === visita.id ? 'fila-editando' : ''}>
-                  <td>{visita.unidad_medica}</td>
-                  <td className="nombre">{visita.unidad_medica_nombre}</td>
-                  <td>{visita.unidad_medica_municipio || '—'}</td>
-                  <td>{visita.tipo_unidad_medica || '—'}</td>
-                  <td>{visita.ruta_numero || 'Pendiente'}</td>
-                  <td>{visita.fecha_distribucion_programada || 'Pendiente'}</td>
-                  <td>{visita.claves_a_desplazar}</td>
-                  <td>{visita.piezas_medicamento}</td>
-                  <td>{visita.piezas_material_curacion}</td>
-                  <td>{visita.quien_recibe || '—'}</td>
-                  <td>{visita.telefono || '—'}</td>
-                  <td>{visita.correo || '—'}</td>
+                <tr key={visita.id}>
+                  {COLUMNAS.map((columna) => {
+                    const editandoEstaCelda = celdaEditando?.visitaId === visita.id && celdaEditando.campo === columna.key;
+                    return (
+                      <td
+                        key={columna.key}
+                        className={columna.clase}
+                        data-editable={columna.editable && puedeEscribir ? 'true' : undefined}
+                        onDoubleClick={() => iniciarEdicion(visita, columna)}
+                      >
+                        {editandoEstaCelda ? (
+                          columna.tipo === 'fecha' ? (
+                            <input
+                              type="date" autoFocus
+                              min={jornada?.fecha_inicio} max={jornada?.fecha_fin}
+                              value={valorEdicion}
+                              onChange={(e) => setValorEdicion(e.target.value)}
+                              onBlur={() => confirmarEdicionCelda(visita, columna)}
+                              onKeyDown={onTeclaCelda}
+                            />
+                          ) : columna.tipo === 'numero' ? (
+                            <input
+                              type="number" min="0" autoFocus
+                              value={valorEdicion}
+                              onChange={(e) => setValorEdicion(e.target.value)}
+                              onBlur={() => confirmarEdicionCelda(visita, columna)}
+                              onKeyDown={onTeclaCelda}
+                            />
+                          ) : (
+                            <input
+                              type="text" autoFocus
+                              maxLength={columna.maxLength}
+                              value={valorEdicion}
+                              onChange={(e) => setValorEdicion(e.target.value)}
+                              onBlur={() => confirmarEdicionCelda(visita, columna)}
+                              onKeyDown={onTeclaCelda}
+                            />
+                          )
+                        ) : (
+                          valorMostrado(visita, columna)
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="jornada-acciones">
                     {/* Marcadores: visibles para cualquiera que llegue a esta tabla
                         (incluye admin_nacional, que no puede editar pero si elegir
-                        fotos para la presentacion) -- Evidencia/Editar/Eliminar
-                        siguen abajo, solo para quien puede escribir. */}
+                        fotos para la presentacion) -- Evidencia/Eliminar siguen
+                        abajo, solo para quien puede escribir. */}
                     {(visita.ruta_numero || visita.fecha_distribucion_programada) && (
                       <>
                         {visita.tiene_evidencia_imagen && (
@@ -468,7 +574,6 @@ export default function JornadaDetallePage() {
                         {(visita.ruta_numero || visita.fecha_distribucion_programada) && (
                           <button className="btn-ghost" onClick={() => setVisitaEvidencia(visita)}>Evidencia</button>
                         )}
-                        <button className="btn-ghost" onClick={() => onEditar(visita)}>Editar</button>
                         <button className="btn-ghost" onClick={() => onEliminar(visita)}>Eliminar</button>
                       </>
                     )}

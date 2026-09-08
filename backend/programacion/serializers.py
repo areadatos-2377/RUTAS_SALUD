@@ -127,4 +127,18 @@ class ProgramacionVisitaSerializer(serializers.ModelSerializer):
             and self.instance.unidad_medica.entidad_id != request.user.entidad_id
         ):
             raise serializers.ValidationError("No puedes programar sobre una ruta de otra entidad.")
+
+        fecha_programada = attrs.get(
+            "fecha_distribucion_programada",
+            self.instance.fecha_distribucion_programada,
+        )
+        jornada = self.instance.jornada
+        if fecha_programada and not jornada.fecha_inicio <= fecha_programada <= jornada.fecha_fin:
+            raise serializers.ValidationError(
+                {
+                    "fecha_distribucion_programada": (
+                        "La fecha debe estar dentro del periodo de la distribución."
+                    )
+                }
+            )
         return attrs

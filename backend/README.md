@@ -37,7 +37,7 @@ Endpoints, todos requieren sesión iniciada (`POST /api/auth/login/`):
 - `GET/POST/PATCH/DELETE /api/jornadas/` — lectura para cualquiera, escritura solo `admin_nacional`/`super_admin`.
 - `GET/POST/PATCH/DELETE /api/rutas/` y `/api/programacion-visitas/` — `usuario_entidad`/`super_admin` leen y escriben (un `usuario_entidad` solo ve/edita lo de su propia entidad, forzado server-side); `admin_nacional` solo lee.
 
-Al crear una jornada se precarga automáticamente una fila por cada CLUES compatible con su categoría. Cada fila se edita para capturar ruta, fecha, cantidades y contacto; también puede eliminarse de esa jornada. La restricción única `(jornada, unidad_medica)` impide duplicados en la base de datos.
+Al crear una jornada se precarga automáticamente una fila por cada CLUES compatible con su categoría. `RUTA` se toma como valor inicial del catálogo y sigue siendo editable. La fecha más antigua de `FECHA PROG` se alinea con el inicio de la jornada; las demás conservan su diferencia en días y, si rebasan el periodo, se asignan al último día. Las fechas ausentes quedan vacías. Cada fila también puede editarse o eliminarse de esa jornada. La restricción única `(jornada, unidad_medica)` impide duplicados en la base de datos.
 
 ## Catálogo de CLUES (carga mensual)
 
@@ -60,8 +60,8 @@ python manage.py cargar_clues --rellenar-visitas-sin-contacto
 Esto copia `¿QUIÉN RECIBE EN UNIDAD?`, `TELÉFONO` y `CORREO` a las visitas ya
 creadas, pero únicamente cuando el campo correspondiente sigue vacío. Los datos
 que un usuario haya editado en una distribución no se sobrescriben. Las nuevas
-distribuciones toman esos valores automáticamente del catálogo y después pueden
-modificarse de forma independiente.
+distribuciones toman esos valores, `RUTA` y la referencia de `FECHA PROG`
+automáticamente del catálogo y después pueden modificarse de forma independiente.
 
 Es **seguro re-ejecutarlo** las veces que haga falta: agrega los CLUES nuevos, actualiza los que cambiaron de nombre/tipo/municipio, y **nunca toca ni borra** las unidades con `origen=manual` (las capturadas a mano porque su CLUES no estaba en el catálogo oficial — ver `blueprint/herramienta-captura-programacion-plan-v00.md`). Tampoco borra CLUES que hayan desaparecido del nuevo Excel; darlas de baja formalmente es una decisión de negocio aparte.
 

@@ -1,11 +1,14 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from datetime import date
 
 import openpyxl
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
+from .management.commands.cargar_clues import Command, fecha_programacion_celda
 from .models import UnidadMedica
 
 
@@ -30,6 +33,8 @@ class CargarCluesContactosTests(TestCase):
 					"¿QUIÉN RECIBE EN UNIDAD?",
 					"TELÉFONO",
 					"CORREO",
+					"RUTA",
+					"FECHA PROG",
 				]
 			)
 			ws_clues.append(
@@ -44,6 +49,8 @@ class CargarCluesContactosTests(TestCase):
 					"Responsable de farmacia",
 					"312 123 4567 EXT 8",
 					"farmacia@ejemplo.test - almacen@ejemplo.test",
+					4,
+					"Thursday, August 20, 2026",
 				]
 			)
 			wb_clues.save(clues_path)
@@ -76,3 +83,27 @@ class CargarCluesContactosTests(TestCase):
 			unidad.correo,
 			"farmacia@ejemplo.test - almacen@ejemplo.test",
 		)
+		self.assertEqual(unidad.ruta_programacion, "4")
+		self.assertEqual(unidad.fecha_programacion_referencia, date(2026, 8, 20))
+
+	def test_falla_con_mensaje_claro_si_faltan_columnas_de_programacion(self):
+		with TemporaryDirectory() as directorio:
+			clues_path = Path(directorio) / "CLUES_IMB.xlsx"
+			wb = openpyxl.Workbook()
+			ws = wb.active
+			ws.title = "BD_IMB"
+			ws.append(["CLUES"])
+			wb.save(clues_path)
+
+			with (
+				patch(
+					"catalogos.management.commands.cargar_clues.CLUES_XLSX",
+					clues_path,
+				),
+				patch.object(Command, "_leer_coordinadores", return_value=({}, [])),
+				self.assertRaisesMessage(CommandError, "FECHA PROG"),
+			):
+				Command()._cargar(False, 0, False)
+
+	def test_fecha_no_reconocida_se_conserva_vacia(self):
+		self.assertIsNone(fecha_programacion_celda("SIN FECHA DE PROGRAMACIÓN"))

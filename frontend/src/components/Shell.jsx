@@ -94,9 +94,6 @@ export default function Shell() {
               </NavLink>
               {usuario.rol === ROLES.SUPER_ADMIN && (
                 <>
-                  <NavLink to="/catalogos/entidades" className="nav-item">
-                    {ICONOS.catalogos} Entidades
-                  </NavLink>
                   <NavLink to="/catalogos/unidades" className="nav-item">
                     {ICONOS.catalogos} Unidades médicas
                   </NavLink>
