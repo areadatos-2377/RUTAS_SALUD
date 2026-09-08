@@ -28,6 +28,13 @@ def fecha_programada_inicial(jornada, fecha_referencia, fecha_base):
     return min(fecha_programada, jornada.fecha_fin)
 
 
+def fecha_base_por_categoria(categoria):
+    niveles = Jornada.NIVELES_POR_CATEGORIA[categoria]
+    return UnidadMedica.objects.filter(nivel_atencion__in=niveles).aggregate(
+        fecha=Min("fecha_programacion_referencia")
+    )["fecha"]
+
+
 class JornadaViewSet(viewsets.ModelViewSet):
     # Nacional: cualquier autenticado ve todas las jornadas, no se filtra por entidad.
     queryset = Jornada.objects.all()
@@ -39,9 +46,7 @@ class JornadaViewSet(viewsets.ModelViewSet):
         jornada = serializer.save()
         niveles_validos = Jornada.NIVELES_POR_CATEGORIA[jornada.categoria]
         unidades = UnidadMedica.objects.filter(nivel_atencion__in=niveles_validos)
-        fecha_base = unidades.aggregate(
-            fecha=Min("fecha_programacion_referencia")
-        )["fecha"]
+        fecha_base = fecha_base_por_categoria(jornada.categoria)
         ProgramacionVisita.objects.bulk_create(
             [
                 ProgramacionVisita(
