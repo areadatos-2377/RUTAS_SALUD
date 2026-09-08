@@ -1,0 +1,105 @@
+.filtro-columna__boton {
+  border: none;
+  background: transparent;
+  color: var(--gray-tx);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.filtro-columna__boton:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+.filtro-columna__boton--activo {
+  color: var(--guinda);
+  font-weight: 700;
+}
+
+.filtro-columna__panel {
+  position: fixed;
+  z-index: 200;
+  width: 220px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 16px 40px -14px rgba(22, 26, 29, 0.4);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* text-transform normal -- el th de donde cuelga viene en mayusculas */
+  text-transform: none;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.filtro-columna__buscar {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+
+.filtro-columna__acciones-rapidas {
+  display: flex;
+  gap: 6px;
+}
+.filtro-columna__acciones-rapidas .btn-ghost {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.filtro-columna__lista {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 0;
+}
+.filtro-columna__opcion {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  padding: 3px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 400;
+}
+.filtro-columna__opcion:hover {
+  background: #f4f1ea;
+}
+.filtro-columna__opcion input {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.filtro-columna__opcion span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filtro-columna__vacio {
+  font-size: 12px;
+  color: var(--gray-tx);
+  margin: 4px 2px;
+}
+
+.filtro-columna__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.filtro-columna__footer button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}

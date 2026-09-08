@@ -1,6 +1,9 @@
 from django.db import transaction
 from django.db.models import Exists, Min, OuterRef
+from django.utils.dateparse import parse_date
 from rest_framework import permissions, serializers, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from catalogos.models import UnidadMedica
 from entregas.models import EvidenciaArchivo
@@ -9,6 +12,13 @@ from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramac
 
 from .models import Jornada, ProgramacionVisita, Ruta
 from .serializers import JornadaSerializer, ProgramacionVisitaSerializer, RutaSerializer
+
+# Mismos 8 campos que ProgramacionVisitaSerializer deja editables (el resto
+# son read_only_fields: jornada, ruta, unidad_medica, bloqueada,
+# tipo_unidad_medica) -- ver actualizar_masivo() en el viewset, mas abajo.
+_CAMPOS_TEXTO_MASIVO = {"ruta_numero": 50, "quien_recibe": 150, "telefono": 100, "correo": 150}
+_CAMPOS_ENTERO_MASIVO = {"claves_a_desplazar", "piezas_medicamento", "piezas_material_curacion"}
+_CAMPO_FECHA_MASIVO = "fecha_distribucion_programada"
 
 
 def fecha_programada_inicial(jornada, fecha_referencia, fecha_base):
@@ -103,7 +113,7 @@ class ProgramacionVisitaViewSet(viewsets.ModelViewSet):
     )
     serializer_class = ProgramacionVisitaSerializer
     permission_classes = [permissions.IsAuthenticated, PuedeGestionarProgramacion]
-    http_method_names = ["get", "patch", "delete", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -127,3 +137,61 @@ class ProgramacionVisitaViewSet(viewsets.ModelViewSet):
         if jornada_id:
             qs = qs.filter(jornada_id=jornada_id)
         return qs
+
+    @action(detail=False, methods=["post"], url_path="actualizar-masivo")
+    def actualizar_masivo(self, request):
+        """Cambia UN campo a VARIAS filas a la vez -- para cuando, con la
+        tabla ya filtrada del lado del navegador (ej. una sola ruta), hay
+        que corregir ese campo en todas las filas visibles de un jalon (ej.
+        renombrar la ruta). El navegador ya resolvio que filas son -- aqui
+        solo se valida que de verdad le pertenezcan a este usuario (nunca se
+        confia en los ids que manda el cliente) y se aplica todo en una sola
+        sentencia SQL (atomica por si misma, no hace falta transaction.atomic
+        para un solo UPDATE)."""
+        ids = request.data.get("ids")
+        campo = request.data.get("campo")
+        valor = request.data.get("valor")
+
+        if not isinstance(ids, list) or not ids:
+            return Response({"ids": ["Debe mandar al menos un id."]}, status=400)
+
+        campos_permitidos = set(_CAMPOS_TEXTO_MASIVO) | _CAMPOS_ENTERO_MASIVO | {_CAMPO_FECHA_MASIVO}
+        if campo not in campos_permitidos:
+            return Response({"campo": ["Ese campo no se puede editar de forma masiva."]}, status=400)
+
+        # get_queryset() ya filtra por rol (usuario_entidad solo ve lo de su
+        # propia entidad) -- id__in sobre ESE queryset es lo que garantiza
+        # que nadie edite filas de otra entidad mandando ids a mano.
+        qs = self.get_queryset().filter(id__in=ids)
+        jornadas_afectadas = set(qs.values_list("jornada_id", flat=True))
+        if not jornadas_afectadas:
+            return Response({"detail": "Ninguno de los ids es válido para tu usuario."}, status=400)
+
+        if campo == _CAMPO_FECHA_MASIVO:
+            valor_final = parse_date(valor) if valor else None
+            if valor and valor_final is None:
+                return Response({"valor": ["Fecha inválida."]}, status=400)
+            if valor_final is not None:
+                for jornada in Jornada.objects.filter(id__in=jornadas_afectadas):
+                    if not (jornada.fecha_inicio <= valor_final <= jornada.fecha_fin):
+                        return Response({
+                            "valor": [
+                                f"Debe estar entre {jornada.fecha_inicio} y {jornada.fecha_fin} "
+                                f"(periodo de «{jornada.nombre}»)."
+                            ],
+                        }, status=400)
+        elif campo in _CAMPOS_ENTERO_MASIVO:
+            try:
+                valor_final = int(valor)
+            except (TypeError, ValueError):
+                return Response({"valor": ["Debe ser un número entero."]}, status=400)
+            if valor_final < 0:
+                return Response({"valor": ["No puede ser negativo."]}, status=400)
+        else:
+            valor_final = (valor or "").strip()
+            maximo = _CAMPOS_TEXTO_MASIVO[campo]
+            if len(valor_final) > maximo:
+                return Response({"valor": [f"Máximo {maximo} caracteres."]}, status=400)
+
+        actualizados = qs.update(**{campo: valor_final})
+        return Response({"actualizados": actualizados, "solicitados": len(ids)})

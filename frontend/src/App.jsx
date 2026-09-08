@@ -5,7 +5,6 @@ import LoginPage from './pages/LoginPage';
 import ActivarCuentaPage from './pages/ActivarCuentaPage';
 import JornadasPage from './pages/JornadasPage';
 import JornadaDetallePage from './pages/JornadaDetallePage';
-import EntidadesPage from './pages/EntidadesPage';
 import CoordinadoresPage from './pages/CoordinadoresPage';
 import UnidadesMedicasPage from './pages/UnidadesMedicasPage';
 import UsuariosPage from './pages/UsuariosPage';
@@ -56,14 +55,6 @@ export default function App() {
             element={
               <RequireRole roles={[ROLES.ADMIN_NACIONAL, ROLES.SUPER_ADMIN]}>
                 <CoordinadoresPage />
-              </RequireRole>
-            }
-          />
-          <Route
-            path="catalogos/entidades"
-            element={
-              <RequireRole roles={[ROLES.SUPER_ADMIN]}>
-                <EntidadesPage />
               </RequireRole>
             }
           />
