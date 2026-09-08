@@ -428,6 +428,11 @@ export default function JornadaDetallePage() {
             onChange={(e) => setBusqueda(e.target.value)}
           />
         </div>
+        {Object.keys(filtrosColumna).length > 0 && (
+          <button className="btn-ghost" onClick={() => setFiltrosColumna({})}>
+            Limpiar filtros ({Object.keys(filtrosColumna).length})
+          </button>
+        )}
         <p className="jornada-conteo">
           {filasVisibles?.length ?? 0} de {visitas?.length ?? 0} unidades
           {nombreEntidad ? ` · ${nombreEntidad}` : ''}
