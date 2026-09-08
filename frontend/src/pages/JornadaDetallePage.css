@@ -34,8 +34,10 @@
 .jornada-controles .field {
   min-width: 220px;
 }
-.jornada-busqueda {
-  width: min(420px, 100%);
+.jornada-descargar,
+.jornada-limpiar-filtros {
+  height: 40px;
+  white-space: nowrap;
 }
 .jornada-conteo {
   margin: 0 0 9px auto;
@@ -217,7 +219,8 @@
     flex-direction: column;
   }
   .jornada-controles .field,
-  .jornada-busqueda {
+  .jornada-descargar,
+  .jornada-limpiar-filtros {
     width: 100%;
   }
   .jornada-conteo {

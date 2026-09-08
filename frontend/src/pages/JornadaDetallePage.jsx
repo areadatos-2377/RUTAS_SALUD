@@ -62,7 +62,6 @@ export default function JornadaDetallePage() {
     usuario?.rol === ROLES.USUARIO_ENTIDAD ? String(usuario.entidad) : '',
   );
   const [visitas, setVisitas] = useState(null);
-  const [busqueda, setBusqueda] = useState('');
   const [error, setError] = useState(null);
   const [exportando, setExportando] = useState(false);
   const [visitaEvidencia, setVisitaEvidencia] = useState(null);
@@ -78,8 +77,7 @@ export default function JornadaDetallePage() {
 
   // Filtros por columna estilo Excel: { [campo]: Set<valorMostrado> }. Un
   // campo ausente = sin filtro (se muestran todos los valores de esa
-  // columna). Se combinan entre si con AND ("anidados"), igual que la
-  // busqueda libre de mas abajo.
+  // columna). Se combinan entre si con AND ("anidados").
   const [filtrosColumna, setFiltrosColumna] = useState({});
   const [filtroAbierto, setFiltroAbierto] = useState(null);
 
@@ -135,7 +133,7 @@ export default function JornadaDetallePage() {
     setExportando(true);
     try {
       const entidad = await api.get(`/api/entidades/${entidadId}/`);
-      await exportarProgramacionExcel({ jornada, entidad, visitas });
+      await exportarProgramacionExcel({ jornada, entidad, visitas: filasVisibles });
     } catch {
       setError('No se pudo generar el Excel.');
     } finally {
@@ -304,17 +302,7 @@ export default function JornadaDetallePage() {
     });
   }
 
-  const termino = busqueda.trim().toLocaleLowerCase('es');
   const filasVisibles = visitas?.filter((visita) => {
-    if (termino) {
-      const coincideTexto = [
-        visita.unidad_medica,
-        visita.unidad_medica_nombre,
-        visita.unidad_medica_municipio,
-        visita.ruta_numero,
-      ].some((valor) => String(valor || '').toLocaleLowerCase('es').includes(termino));
-      if (!coincideTexto) return false;
-    }
     return COLUMNAS.every((columna) => {
       const set = filtrosColumna[columna.key];
       if (!set) return true;
@@ -382,11 +370,6 @@ export default function JornadaDetallePage() {
             </p>
           )}
         </div>
-        {usuario?.rol === ROLES.USUARIO_ENTIDAD && visitas && (
-          <button className="btn-ghost" onClick={onExportar} disabled={exportando}>
-            {exportando ? 'Generando…' : 'Descargar Excel'}
-          </button>
-        )}
         {puedeGenerarPresentacion && visitas && (
           <div className="jornada-topbar__presentacion">
             {modoSeleccion && (
@@ -418,18 +401,18 @@ export default function JornadaDetallePage() {
             </select>
           </div>
         )}
-        <div className="field jornada-busqueda">
-          <label htmlFor="busqueda">Buscar unidad</label>
-          <input
-            id="busqueda"
-            type="search"
-            placeholder="CLUES, nombre, municipio o ruta"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-          />
-        </div>
+        {visitas && (
+          <button
+            type="button"
+            className="btn-ghost jornada-descargar"
+            onClick={onExportar}
+            disabled={exportando || filasVisibles.length === 0}
+          >
+            {exportando ? 'Generando…' : 'Descargar Excel'}
+          </button>
+        )}
         {Object.keys(filtrosColumna).length > 0 && (
-          <button className="btn-ghost" onClick={() => setFiltrosColumna({})}>
+          <button className="btn-ghost jornada-limpiar-filtros" onClick={() => setFiltrosColumna({})}>
             Limpiar filtros ({Object.keys(filtrosColumna).length})
           </button>
         )}
