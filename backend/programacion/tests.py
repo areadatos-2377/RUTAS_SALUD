@@ -61,7 +61,18 @@ class PrecargaJornadaTests(APITestCase):
 			nombre="Hospital no elegible",
 			entidad=self.colima,
 			tipo_unidad_medica="HOSPITAL",
+			ruta_programacion="20",
+			fecha_programacion_referencia=date(2026, 9, 1),
 			nivel_atencion=UnidadMedica.NIVEL_SEGUNDO,
+		)
+		self.hospital_tercer_nivel = UnidadMedica.objects.create(
+			clues="CMSSA000003",
+			nombre="Hospital de tercer nivel",
+			entidad=self.colima,
+			tipo_unidad_medica="HOSPITAL",
+			ruta_programacion="21",
+			fecha_programacion_referencia=date(2026, 9, 3),
+			nivel_atencion=UnidadMedica.NIVEL_TERCER,
 		)
 		self.super_admin = Usuario.objects.create_user(
 			username="super",
@@ -129,6 +140,32 @@ class PrecargaJornadaTests(APITestCase):
 				jornada_id=respuesta.data["id"],
 				fecha_distribucion_programada__isnull=False,
 			).exists()
+		)
+
+	def test_segundo_tercer_nivel_usa_su_propio_dia_cero(self):
+		self.client.force_authenticate(self.super_admin)
+		respuesta = self.client.post(
+			"/api/jornadas/",
+			{
+				"nombre": "Jornada hospitalaria",
+				"tipo": Jornada.TIPO_ORDINARIA,
+				"categoria": Jornada.CATEGORIA_SEGUNDO_TERCER_NIVEL,
+				"fecha_inicio": "2026-09-09",
+				"fecha_fin": "2026-09-25",
+			},
+			format="json",
+		)
+
+		self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+		visitas = ProgramacionVisita.objects.filter(jornada_id=respuesta.data["id"])
+		self.assertEqual(visitas.count(), 2)
+		self.assertEqual(
+			visitas.get(unidad_medica=self.hospital).fecha_distribucion_programada,
+			date(2026, 9, 9),
+		)
+		self.assertEqual(
+			visitas.get(unidad_medica=self.hospital_tercer_nivel).fecha_distribucion_programada,
+			date(2026, 9, 11),
 		)
 
 	def test_restriccion_impide_duplicar_clues_en_jornada(self):

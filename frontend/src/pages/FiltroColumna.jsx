@@ -78,10 +78,11 @@ export default function FiltroColumna({ label, valores, seleccionActiva, abierto
         type="button"
         className={`filtro-columna__boton${activo ? ' filtro-columna__boton--activo' : ''}`}
         onClick={() => (abierto ? onCerrar() : onAbrir())}
-        title={`Filtrar ${label}`}
-        aria-label={`Filtrar ${label}`}
+        title={activo ? `Filtro activo en ${label}` : `Filtrar ${label}`}
+        aria-label={activo ? `Filtro activo en ${label}` : `Filtrar ${label}`}
       >
         ▾
+        {activo && <span className="filtro-columna__insignia" aria-hidden="true" />}
       </button>
       {abierto && posicion && createPortal(
         <div

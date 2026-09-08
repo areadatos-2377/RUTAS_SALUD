@@ -428,6 +428,11 @@ export default function JornadaDetallePage() {
             onChange={(e) => setBusqueda(e.target.value)}
           />
         </div>
+        {Object.keys(filtrosColumna).length > 0 && (
+          <button className="btn-ghost" onClick={() => setFiltrosColumna({})}>
+            Limpiar filtros ({Object.keys(filtrosColumna).length})
+          </button>
+        )}
         <p className="jornada-conteo">
           {filasVisibles?.length ?? 0} de {visitas?.length ?? 0} unidades
           {nombreEntidad ? ` · ${nombreEntidad}` : ''}
@@ -467,16 +472,18 @@ export default function JornadaDetallePage() {
               <tr>
                 {COLUMNAS.map((columna) => (
                   <th key={columna.key}>
-                    {columna.label}
-                    <FiltroColumna
-                      label={columna.label}
-                      valores={valoresUnicosPorColumna[columna.key] || []}
-                      seleccionActiva={filtrosColumna[columna.key]}
-                      abierto={filtroAbierto === columna.key}
-                      onAbrir={() => setFiltroAbierto(columna.key)}
-                      onCerrar={() => setFiltroAbierto((actual) => (actual === columna.key ? null : actual))}
-                      onAplicar={(nuevoSet) => onAplicarFiltroColumna(columna.key, nuevoSet)}
-                    />
+                    <div className="th-contenido">
+                      {columna.label}
+                      <FiltroColumna
+                        label={columna.label}
+                        valores={valoresUnicosPorColumna[columna.key] || []}
+                        seleccionActiva={filtrosColumna[columna.key]}
+                        abierto={filtroAbierto === columna.key}
+                        onAbrir={() => setFiltroAbierto(columna.key)}
+                        onCerrar={() => setFiltroAbierto((actual) => (actual === columna.key ? null : actual))}
+                        onAplicar={(nuevoSet) => onAplicarFiltroColumna(columna.key, nuevoSet)}
+                      />
+                    </div>
                   </th>
                 ))}
                 <th></th>
