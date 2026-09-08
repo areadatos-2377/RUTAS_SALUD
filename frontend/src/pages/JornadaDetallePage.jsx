@@ -467,16 +467,18 @@ export default function JornadaDetallePage() {
               <tr>
                 {COLUMNAS.map((columna) => (
                   <th key={columna.key}>
-                    {columna.label}
-                    <FiltroColumna
-                      label={columna.label}
-                      valores={valoresUnicosPorColumna[columna.key] || []}
-                      seleccionActiva={filtrosColumna[columna.key]}
-                      abierto={filtroAbierto === columna.key}
-                      onAbrir={() => setFiltroAbierto(columna.key)}
-                      onCerrar={() => setFiltroAbierto((actual) => (actual === columna.key ? null : actual))}
-                      onAplicar={(nuevoSet) => onAplicarFiltroColumna(columna.key, nuevoSet)}
-                    />
+                    <div className="th-contenido">
+                      {columna.label}
+                      <FiltroColumna
+                        label={columna.label}
+                        valores={valoresUnicosPorColumna[columna.key] || []}
+                        seleccionActiva={filtrosColumna[columna.key]}
+                        abierto={filtroAbierto === columna.key}
+                        onAbrir={() => setFiltroAbierto(columna.key)}
+                        onCerrar={() => setFiltroAbierto((actual) => (actual === columna.key ? null : actual))}
+                        onAplicar={(nuevoSet) => onAplicarFiltroColumna(columna.key, nuevoSet)}
+                      />
+                    </div>
                   </th>
                 ))}
                 <th></th>

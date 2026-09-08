@@ -96,7 +96,11 @@
 .jornada-tabla td {
   padding: 10px 12px;
 }
-.jornada-tabla th {
+/* El <th> debe quedarse como display:table-cell (el default) -- ponerle
+   display:flex directo rompe el algoritmo de layout de tabla del
+   navegador (el thead se desprende del resto y se apila aparte). El flex
+   va en este div interno, no en el th. */
+.jornada-tabla th .th-contenido {
   display: flex;
   align-items: center;
   justify-content: space-between;
