@@ -84,6 +84,7 @@ class ProgramacionVisitaSerializer(serializers.ModelSerializer):
     tiene_evidencia_imagen = serializers.BooleanField(read_only=True)
     tiene_evidencia_documento = serializers.BooleanField(read_only=True)
     tiene_evidencia_video = serializers.BooleanField(read_only=True)
+    entregado = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ProgramacionVisita
@@ -110,6 +111,7 @@ class ProgramacionVisitaSerializer(serializers.ModelSerializer):
             "tiene_evidencia_imagen",
             "tiene_evidencia_documento",
             "tiene_evidencia_video",
+            "entregado",
         ]
         # tipo_unidad_medica viene del catalogo (UnidadMedica.tipo_unidad_medica)
         # al precargarse -- no debe poder editarse a mano y desincronizarse.

@@ -6,6 +6,7 @@ from rest_framework.test import APITestCase
 
 from catalogos.management.commands.cargar_clues import Command as CargarCluesCommand
 from catalogos.models import Entidad, UnidadMedica
+from entregas.models import Entrega
 from usuarios.models import Usuario
 
 from .models import Jornada, ProgramacionVisita
@@ -189,6 +190,30 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(listado.status_code, status.HTTP_200_OK)
 		self.assertEqual(listado.data["count"], 1)
 		self.assertEqual(listado.data["results"][0]["unidad_medica"], self.unidad_colima.clues)
+
+	def test_listado_indica_si_la_unidad_esta_entregada(self):
+		respuesta = self.crear_jornada()
+		fila = ProgramacionVisita.objects.get(
+			jornada_id=respuesta.data["id"],
+			unidad_medica=self.unidad_colima,
+		)
+		self.client.force_authenticate(self.usuario_colima)
+
+		sin_entrega = self.client.get(
+			f"/api/programacion-visitas/?jornada={respuesta.data['id']}"
+		)
+		self.assertIs(sin_entrega.data["results"][0]["entregado"], False)
+
+		Entrega.objects.create(
+			programacion_visita=fila,
+			entregado=True,
+			fecha_entrega=date(2026, 9, 9),
+			usuario=self.usuario_colima,
+		)
+		con_entrega = self.client.get(
+			f"/api/programacion-visitas/?jornada={respuesta.data['id']}"
+		)
+		self.assertIs(con_entrega.data["results"][0]["entregado"], True)
 
 	def test_fila_precargada_se_puede_editar_y_eliminar(self):
 		respuesta = self.crear_jornada()

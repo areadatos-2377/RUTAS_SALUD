@@ -47,6 +47,26 @@ function valorCrudoParaEditar(visita, columna) {
   return String(crudo);
 }
 
+function tieneEvidencia(visita) {
+  return visita.tiene_evidencia_imagen
+    || visita.tiene_evidencia_documento
+    || visita.tiene_evidencia_video;
+}
+
+function capturaCompleta(visita) {
+  return COLUMNAS_EDITABLES.every((columna) => {
+    const valor = visita[columna.key];
+    if (columna.tipo === 'numero') return Number(valor) > 0;
+    return valor !== null && valor !== undefined && String(valor).trim() !== '';
+  });
+}
+
+function claseEstadoFila(visita) {
+  if (tieneEvidencia(visita) && visita.entregado) return 'jornada-fila--completa';
+  if (!tieneEvidencia(visita) && capturaCompleta(visita)) return 'jornada-fila--sin-evidencia';
+  return undefined;
+}
+
 export default function JornadaDetallePage() {
   const { id } = useParams();
   const { usuario } = useAuth();
@@ -78,6 +98,7 @@ export default function JornadaDetallePage() {
   // columna). Se combinan entre si con AND ("anidados").
   const [filtrosColumna, setFiltrosColumna] = useState({});
   const [filtroAbierto, setFiltroAbierto] = useState(null);
+  const [filtroEvidencia, setFiltroEvidencia] = useState('todas');
 
   // Edicion en linea (doble clic) -- reemplaza al viejo boton "Editar" +
   // formulario aparte. Solo una celda a la vez.
@@ -112,6 +133,7 @@ export default function JornadaDetallePage() {
     setVisitas(null);
     setError(null);
     setFiltrosColumna({});
+    setFiltroEvidencia('todas');
     api.getAll(`/api/programacion-visitas/?jornada=${id}&entidad=${entidadId}`)
       .then(setVisitas)
       .catch(() => setError('No se pudieron cargar las unidades de la distribución.'));
@@ -301,6 +323,8 @@ export default function JornadaDetallePage() {
   }
 
   const filasVisibles = visitas?.filter((visita) => {
+    if (filtroEvidencia === 'con' && !tieneEvidencia(visita)) return false;
+    if (filtroEvidencia === 'sin' && tieneEvidencia(visita)) return false;
     return COLUMNAS.every((columna) => {
       const set = filtrosColumna[columna.key];
       if (!set) return true;
@@ -349,6 +373,8 @@ export default function JornadaDetallePage() {
   const nombreEntidad = usuario?.rol === ROLES.USUARIO_ENTIDAD
     ? visitas?.[0]?.unidad_medica_entidad_nombre
     : entidadSeleccionada?.nombre;
+  const cantidadFiltrosActivos = Object.keys(filtrosColumna).length
+    + (filtroEvidencia === 'todas' ? 0 : 1);
 
   return (
     <div>
@@ -409,9 +435,22 @@ export default function JornadaDetallePage() {
             {exportando ? 'Generando…' : 'Descargar Excel'}
           </button>
         )}
-        {Object.keys(filtrosColumna).length > 0 && (
-          <button className="btn-ghost jornada-limpiar-filtros" onClick={() => setFiltrosColumna({})}>
-            Limpiar filtros ({Object.keys(filtrosColumna).length})
+        {visitas && (
+          <div className="field jornada-filtro-evidencia">
+            <label htmlFor="filtro-evidencia">Evidencia</label>
+            <select id="filtro-evidencia" value={filtroEvidencia} onChange={(e) => setFiltroEvidencia(e.target.value)}>
+              <option value="todas">Todas las CLUES</option>
+              <option value="con">Con evidencia</option>
+              <option value="sin">Sin evidencia</option>
+            </select>
+          </div>
+        )}
+        {cantidadFiltrosActivos > 0 && (
+          <button
+            className="btn-ghost jornada-limpiar-filtros"
+            onClick={() => { setFiltrosColumna({}); setFiltroEvidencia('todas'); }}
+          >
+            Limpiar filtros ({cantidadFiltrosActivos})
           </button>
         )}
         <p className="jornada-conteo">
@@ -475,7 +514,7 @@ export default function JornadaDetallePage() {
                 <tr><td colSpan={COLUMNAS.length + 1} className="tabla-vacia">No hay unidades que coincidan.</td></tr>
               )}
               {filasVisibles.map((visita) => (
-                <tr key={visita.id}>
+                <tr key={visita.id} className={claseEstadoFila(visita)}>
                   {COLUMNAS.map((columna) => {
                     const editandoEstaCelda = celdaEditando?.visitaId === visita.id && celdaEditando.campo === columna.key;
                     return (

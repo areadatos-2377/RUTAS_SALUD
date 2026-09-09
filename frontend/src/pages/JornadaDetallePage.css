@@ -34,6 +34,9 @@
 .jornada-controles .field {
   min-width: 220px;
 }
+.jornada-controles .jornada-filtro-evidencia {
+  min-width: 180px;
+}
 .jornada-descargar,
 .jornada-limpiar-filtros {
   height: 40px;
@@ -172,6 +175,18 @@
 }
 .jornada-tabla tbody tr {
   scroll-margin-top: 44px;
+}
+.jornada-tabla tbody tr.jornada-fila--completa td {
+  background: #e7f4e8;
+}
+.jornada-tabla tbody tr.jornada-fila--completa:hover td {
+  background: #dcedde;
+}
+.jornada-tabla tbody tr.jornada-fila--sin-evidencia td {
+  background: #fff0d5;
+}
+.jornada-tabla tbody tr.jornada-fila--sin-evidencia:hover td {
+  background: #ffe7bd;
 }
 .jornada-acciones {
   text-align: right;
