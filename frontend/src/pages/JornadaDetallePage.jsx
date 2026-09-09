@@ -12,15 +12,16 @@ import './JornadaDetallePage.css';
 
 const TIPO_LABEL = { ordinaria: 'Ordinaria', extraordinaria: 'Extraordinaria', emergencia: 'Emergencia' };
 
-// Una sola fuente de verdad para las 11 columnas de la tabla -- de aqui
+// Una sola fuente de verdad para las 12 columnas de la tabla -- de aqui
 // salen el encabezado, el filtro por columna, la edicion en linea (doble
 // clic) y las opciones del selector de "editar en masa". `editable` marca
-// las 7 columnas capturables que se muestran en esta vista.
+// las 8 columnas capturables que se muestran en esta vista.
 const COLUMNAS = [
   { key: 'unidad_medica', label: 'CLUES', editable: false },
   { key: 'unidad_medica_nombre', label: 'Nombre de la unidad', editable: false, clase: 'nombre' },
   { key: 'unidad_medica_municipio', label: 'Municipio', editable: false, vacio: '—' },
   { key: 'tipo_unidad_medica', label: 'Tipo de unidad', editable: false, vacio: '—' },
+  { key: 'ruta_numero', label: 'Ruta', editable: true, tipo: 'texto', vacio: '—', maxLength: 50 },
   { key: 'fecha_distribucion_programada', label: 'Fecha programada', editable: true, tipo: 'fecha', vacio: 'Pendiente' },
   { key: 'claves_a_desplazar', label: 'Claves', editable: true, tipo: 'numero' },
   { key: 'piezas_medicamento', label: 'Pzas. medicamento', editable: true, tipo: 'numero' },
