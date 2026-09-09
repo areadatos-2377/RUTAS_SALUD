@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from catalogos.models import UnidadMedica
-from entregas.models import EvidenciaArchivo
+from entregas.models import Entrega, EvidenciaArchivo
 from usuarios.models import Usuario
 from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
 
@@ -111,6 +111,11 @@ class ProgramacionVisitaViewSet(viewsets.ModelViewSet):
             tiene_evidencia_video=Exists(
                 EvidenciaArchivo.objects.filter(
                     entrega__programacion_visita=OuterRef("pk"), tipo="video"
+                )
+            ),
+            entregado=Exists(
+                Entrega.objects.filter(
+                    programacion_visita=OuterRef("pk"), entregado=True
                 )
             ),
         )

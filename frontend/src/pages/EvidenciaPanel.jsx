@@ -94,6 +94,7 @@ export default function EvidenciaPanel({ visita, onCerrar }) {
       tiene_evidencia_imagen: tipos.includes('foto'),
       tiene_evidencia_documento: tipos.includes('pdf') || tipos.includes('documento'),
       tiene_evidencia_video: tipos.includes('video'),
+      entregado: entrega.entregado,
     });
   }
 
