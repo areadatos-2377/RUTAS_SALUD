@@ -12,17 +12,15 @@ import './JornadaDetallePage.css';
 
 const TIPO_LABEL = { ordinaria: 'Ordinaria', extraordinaria: 'Extraordinaria', emergencia: 'Emergencia' };
 
-// Una sola fuente de verdad para las 12 columnas de la tabla -- de aqui
+// Una sola fuente de verdad para las 11 columnas de la tabla -- de aqui
 // salen el encabezado, el filtro por columna, la edicion en linea (doble
 // clic) y las opciones del selector de "editar en masa". `editable` marca
-// las mismas 8 columnas que ya acepta el PATCH de programacion-visitas
-// (ProgramacionVisitaSerializer.read_only_fields tiene las otras 4).
+// las 7 columnas capturables que se muestran en esta vista.
 const COLUMNAS = [
   { key: 'unidad_medica', label: 'CLUES', editable: false },
   { key: 'unidad_medica_nombre', label: 'Nombre de la unidad', editable: false, clase: 'nombre' },
   { key: 'unidad_medica_municipio', label: 'Municipio', editable: false, vacio: '—' },
   { key: 'tipo_unidad_medica', label: 'Tipo de unidad', editable: false, vacio: '—' },
-  { key: 'ruta_numero', label: 'Ruta', editable: true, tipo: 'texto', vacio: 'Pendiente', maxLength: 50 },
   { key: 'fecha_distribucion_programada', label: 'Fecha programada', editable: true, tipo: 'fecha', vacio: 'Pendiente' },
   { key: 'claves_a_desplazar', label: 'Claves', editable: true, tipo: 'numero' },
   { key: 'piezas_medicamento', label: 'Pzas. medicamento', editable: true, tipo: 'numero' },
@@ -526,7 +524,7 @@ export default function JornadaDetallePage() {
                         (incluye admin_nacional, que no puede editar pero si elegir
                         fotos para la presentacion) -- Evidencia/Eliminar siguen
                         abajo, solo para quien puede escribir. */}
-                    {(visita.ruta_numero || visita.fecha_distribucion_programada) && (
+                    {visita.fecha_distribucion_programada && (
                       <>
                         {visita.tiene_evidencia_imagen && (
                           <button
@@ -561,7 +559,7 @@ export default function JornadaDetallePage() {
                       <>
                         {/* Evidencia solo tiene sentido si ya hay algo capturado -- no en
                             las miles de filas precargadas todavia vacias. */}
-                        {(visita.ruta_numero || visita.fecha_distribucion_programada) && (
+                        {visita.fecha_distribucion_programada && (
                           <button className="btn-ghost" onClick={() => setVisitaEvidencia(visita)}>Evidencia</button>
                         )}
                         <button className="btn-ghost" onClick={() => onEliminar(visita)}>Eliminar</button>

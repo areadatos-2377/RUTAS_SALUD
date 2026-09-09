@@ -6,7 +6,6 @@ import ExcelJS from 'exceljs';
 
 const COLUMNAS = [
   { key: 'fecha_distribucion_programada', label: 'FECHA DE DISTRIBUCIÓN PROGRAMADA', width: 31.14, align: 'center', type: 'date' },
-  { key: 'ruta_numero', label: 'RUTAS', width: 16.29, align: 'center' },
   { key: 'unidad_medica', label: 'CLUES', width: 19.0, align: 'center' },
   { key: 'unidad_medica_nombre', label: 'NOMBRE DE LA UNIDAD', width: 49.0, align: 'left' },
   { key: 'claves_a_desplazar', label: 'CLAVES A DESPLAZAR', width: 23.29, align: 'center', type: 'number' },
@@ -83,7 +82,7 @@ export async function exportarProgramacionExcel({ jornada, entidad, visitas }) {
   ws.getRow(6).height = 32.45;
   ws.getRow(7).height = 45.6;
 
-  ws.mergeCells('D2:J4');
+  ws.mergeCells('D2:I4');
   const tituloCell = ws.getCell('D2');
   tituloCell.value = `${tituloInstitucional(jornada.categoria)}\n${formatearRangoFechas(jornada.fecha_inicio, jornada.fecha_fin)}`;
   tituloCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'center' };
@@ -97,7 +96,7 @@ export async function exportarProgramacionExcel({ jornada, entidad, visitas }) {
   etiquetaCell.alignment = { vertical: 'middle', horizontal: 'center' };
   etiquetaCell.border = { bottom: ESTILO.bordeThin, left: ESTILO.bordeThin, right: ESTILO.bordeThin };
 
-  ws.mergeCells('K2:K4');
+  ws.mergeCells('J2:J4');
 
   const etiquetaHeader = (coord, texto, align) => {
     const cell = ws.getCell(coord);
@@ -127,7 +126,6 @@ export async function exportarProgramacionExcel({ jornada, entidad, visitas }) {
 
   etiquetaHeader('I6', 'NÚMERO DE UNIDADES DE 1er NIVEL:', 'left');
   valorHeader('J6', visitas.length);
-  aplicarBordeCompleto(ws.getCell('K6'));
 
   const headerRow = ws.getRow(7);
   COLUMNAS.forEach((col, i) => {
@@ -168,7 +166,7 @@ export async function exportarProgramacionExcel({ jornada, entidad, visitas }) {
     const idRutas = wb.addImage({ base64: `data:image/png;base64,${logoRutas}`, extension: 'png' });
     ws.addImage(idRutas, { tl: { col: 0, row: 1 }, br: { col: 3, row: 3 } });
     const idMaza = wb.addImage({ base64: `data:image/png;base64,${logoMaza}`, extension: 'png' });
-    ws.addImage(idMaza, { tl: { col: 10, row: 1 }, br: { col: 11, row: 4 } });
+    ws.addImage(idMaza, { tl: { col: 9, row: 1 }, br: { col: 10, row: 4 } });
   } catch (e) {
     console.warn('No se pudieron insertar los logos en el Excel:', e);
   }
