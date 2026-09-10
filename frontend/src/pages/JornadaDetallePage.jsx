@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { FileSpreadsheet } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { useAuth, ROLES } from '../auth/AuthContext';
@@ -11,6 +12,13 @@ import '../styles/table.css';
 import './JornadaDetallePage.css';
 
 const TIPO_LABEL = { ordinaria: 'Ordinaria', extraordinaria: 'Extraordinaria', emergencia: 'Emergencia' };
+const OPCIONES_EVIDENCIA = [
+  { valor: 'con', etiqueta: 'Con evidencia' },
+  { valor: 'sin', etiqueta: 'Sin evidencia' },
+  { valor: 'foto', etiqueta: 'Evidencia fotográfica' },
+  { valor: 'documento', etiqueta: 'Notas de remisión' },
+  { valor: 'video', etiqueta: 'Video' },
+];
 
 // Una sola fuente de verdad para las 12 columnas de la tabla -- de aqui
 // salen el encabezado, el filtro por columna, la edicion en linea (doble
@@ -63,9 +71,22 @@ function capturaCompleta(visita) {
 }
 
 function claseEstadoFila(visita) {
+  if (tieneEvidencia(visita) && !visita.entregado) return 'jornada-fila--evidencia-pendiente';
   if (tieneEvidencia(visita) && visita.entregado) return 'jornada-fila--completa';
   if (!tieneEvidencia(visita) && capturaCompleta(visita)) return 'jornada-fila--sin-evidencia';
   return undefined;
+}
+
+function coincideFiltroEvidencia(visita, filtros) {
+  if (filtros.size === 0) return true;
+  return Array.from(filtros).some((filtro) => {
+    if (filtro === 'con') return tieneEvidencia(visita);
+    if (filtro === 'sin') return !tieneEvidencia(visita);
+    if (filtro === 'foto') return visita.tiene_evidencia_imagen;
+    if (filtro === 'documento') return visita.tiene_evidencia_documento;
+    if (filtro === 'video') return visita.tiene_evidencia_video;
+    return false;
+  });
 }
 
 export default function JornadaDetallePage() {
@@ -99,7 +120,7 @@ export default function JornadaDetallePage() {
   // columna). Se combinan entre si con AND ("anidados").
   const [filtrosColumna, setFiltrosColumna] = useState({});
   const [filtroAbierto, setFiltroAbierto] = useState(null);
-  const [filtroEvidencia, setFiltroEvidencia] = useState('todas');
+  const [filtrosEvidencia, setFiltrosEvidencia] = useState(() => new Set());
 
   // Edicion en linea (doble clic) -- reemplaza al viejo boton "Editar" +
   // formulario aparte. Solo una celda a la vez.
@@ -134,7 +155,7 @@ export default function JornadaDetallePage() {
     setVisitas(null);
     setError(null);
     setFiltrosColumna({});
-    setFiltroEvidencia('todas');
+    setFiltrosEvidencia(new Set());
     api.getAll(`/api/programacion-visitas/?jornada=${id}&entidad=${entidadId}`)
       .then(setVisitas)
       .catch(() => setError('No se pudieron cargar las unidades de la distribución.'));
@@ -323,9 +344,17 @@ export default function JornadaDetallePage() {
     });
   }
 
+  function onAlternarFiltroEvidencia(valor) {
+    setFiltrosEvidencia((actuales) => {
+      const nuevos = new Set(actuales);
+      if (nuevos.has(valor)) nuevos.delete(valor);
+      else nuevos.add(valor);
+      return nuevos;
+    });
+  }
+
   const filasVisibles = visitas?.filter((visita) => {
-    if (filtroEvidencia === 'con' && !tieneEvidencia(visita)) return false;
-    if (filtroEvidencia === 'sin' && tieneEvidencia(visita)) return false;
+    if (!coincideFiltroEvidencia(visita, filtrosEvidencia)) return false;
     return COLUMNAS.every((columna) => {
       const set = filtrosColumna[columna.key];
       if (!set) return true;
@@ -375,7 +404,7 @@ export default function JornadaDetallePage() {
     ? visitas?.[0]?.unidad_medica_entidad_nombre
     : entidadSeleccionada?.nombre;
   const cantidadFiltrosActivos = Object.keys(filtrosColumna).length
-    + (filtroEvidencia === 'todas' ? 0 : 1);
+    + filtrosEvidencia.size;
 
   return (
     <div>
@@ -427,29 +456,32 @@ export default function JornadaDetallePage() {
           </div>
         )}
         {visitas && (
-          <button
-            type="button"
-            className="btn-ghost jornada-descargar"
-            onClick={onExportar}
-            disabled={exportando || filasVisibles.length === 0}
-          >
-            {exportando ? 'Generando…' : 'Descargar Excel'}
-          </button>
-        )}
-        {visitas && (
           <div className="field jornada-filtro-evidencia">
-            <label htmlFor="filtro-evidencia">Evidencia</label>
-            <select id="filtro-evidencia" value={filtroEvidencia} onChange={(e) => setFiltroEvidencia(e.target.value)}>
-              <option value="todas">Todas las CLUES</option>
-              <option value="con">Con evidencia</option>
-              <option value="sin">Sin evidencia</option>
-            </select>
+            <label id="filtro-evidencia-label">Evidencia</label>
+            <details className="jornada-filtro-evidencia__selector">
+              <summary aria-labelledby="filtro-evidencia-label">
+                <span>{filtrosEvidencia.size === 0 ? 'Todas las CLUES' : `${filtrosEvidencia.size} seleccionados`}</span>
+                <span aria-hidden="true">▾</span>
+              </summary>
+              <div className="jornada-filtro-evidencia__opciones">
+                {OPCIONES_EVIDENCIA.map((opcion) => (
+                  <label key={opcion.valor}>
+                    <input
+                      type="checkbox"
+                      checked={filtrosEvidencia.has(opcion.valor)}
+                      onChange={() => onAlternarFiltroEvidencia(opcion.valor)}
+                    />
+                    <span>{opcion.etiqueta}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
           </div>
         )}
         {cantidadFiltrosActivos > 0 && (
           <button
             className="btn-ghost jornada-limpiar-filtros"
-            onClick={() => { setFiltrosColumna({}); setFiltroEvidencia('todas'); }}
+            onClick={() => { setFiltrosColumna({}); setFiltrosEvidencia(new Set()); }}
           >
             Limpiar filtros ({cantidadFiltrosActivos})
           </button>
@@ -458,6 +490,17 @@ export default function JornadaDetallePage() {
           {filasVisibles?.length ?? 0} de {visitas?.length ?? 0} unidades
           {nombreEntidad ? ` · ${nombreEntidad}` : ''}
         </p>
+        {visitas && (
+          <button
+            type="button"
+            className="jornada-descargar"
+            onClick={onExportar}
+            disabled={exportando || filasVisibles.length === 0}
+          >
+            <FileSpreadsheet size={18} aria-hidden="true" />
+            {exportando ? 'Generando…' : 'Descargar Excel'}
+          </button>
+        )}
       </div>
 
       {error && <p className="login-error" style={{ maxWidth: 520 }}>{error}</p>}

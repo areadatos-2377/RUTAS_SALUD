@@ -35,12 +35,89 @@
   min-width: 220px;
 }
 .jornada-controles .jornada-filtro-evidencia {
-  min-width: 180px;
+  min-width: 210px;
 }
-.jornada-descargar,
 .jornada-limpiar-filtros {
   height: 40px;
   white-space: nowrap;
+}
+.jornada-filtro-evidencia__selector {
+  position: relative;
+}
+.jornada-filtro-evidencia__selector summary {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: #211f1c;
+  font-size: 13.5px;
+  cursor: pointer;
+  list-style: none;
+}
+.jornada-filtro-evidencia__selector summary::-webkit-details-marker {
+  display: none;
+}
+.jornada-filtro-evidencia__selector[open] summary {
+  border-color: var(--guinda);
+}
+.jornada-filtro-evidencia__opciones {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: 240px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  box-shadow: 0 16px 40px -14px rgba(22, 26, 29, 0.4);
+}
+.jornada-filtro-evidencia__opciones label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.jornada-filtro-evidencia__opciones label:hover {
+  background: #f4f1ea;
+}
+.jornada-filtro-evidencia__opciones input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+}
+.jornada-descargar {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 16px;
+  border: 1px solid #185c37;
+  border-radius: var(--radius-sm);
+  background: #217346;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.jornada-descargar:hover {
+  background: #185c37;
+}
+.jornada-descargar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .jornada-conteo {
   margin: 0 0 9px auto;
@@ -181,6 +258,12 @@
 }
 .jornada-tabla tbody tr.jornada-fila--completa:hover td {
   background: #dcedde;
+}
+.jornada-tabla tbody tr.jornada-fila--evidencia-pendiente td {
+  background: #fde8e7;
+}
+.jornada-tabla tbody tr.jornada-fila--evidencia-pendiente:hover td {
+  background: #fbd9d7;
 }
 .jornada-tabla tbody tr.jornada-fila--sin-evidencia td {
   background: #fff0d5;
