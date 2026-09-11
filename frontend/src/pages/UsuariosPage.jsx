@@ -7,6 +7,7 @@ const ROL_LABEL = {
   [ROLES.SUPER_ADMIN]: 'Super administrador',
   [ROLES.ADMIN_NACIONAL]: 'Administrador nacional',
   [ROLES.USUARIO_ENTIDAD]: 'Usuario de entidad',
+  [ROLES.VISOR]: 'Visor (solo Monitoreo y Seguimiento)',
 };
 
 const FORM_VACIO = { username: '', first_name: '', last_name: '', rol: ROLES.USUARIO_ENTIDAD, entidad: '' };
