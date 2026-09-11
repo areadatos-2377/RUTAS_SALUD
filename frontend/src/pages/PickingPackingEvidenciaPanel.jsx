@@ -5,34 +5,34 @@ import './EvidenciaPanel.css';
 
 // Adaptado de EvidenciaPanel.jsx (pestaña Distribución) -- misma mecanica de
 // subida/borrado por categoria, pero aqui la evidencia es de la ENTIDAD
-// completa (no de una unidad medica puntual) y cada archivo se etiqueta con
-// una fecha propia dentro del periodo de la distribucion, no con un
-// checkbox de "entregado". La entidad puede volver en dias distintos y
-// seguir subiendo -- el listado de abajo muestra TODO lo ya subido, de
-// cualquier fecha, cada item con su dia.
+// completa (no de una unidad medica puntual). La fecha ya no se elige aqui
+// dentro -- se abre directo desde la celda de la matriz (entidad x dia) que
+// se haya clickeado, y este panel queda acotado a esa fecha unicamente
+// (antes mostraba TODO lo subido de la entidad, de cualquier dia).
 const CATEGORIAS = [
   { key: 'foto', label: 'Fotos', icono: '🖼️', accept: '.jpg,.jpeg,.png' },
   { key: 'video', label: 'Video', icono: '🎞️', accept: '.mp4,.mov' },
 ];
 
-function hoyDentroDeRango(min, max) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  if (hoy < min) return min;
-  if (hoy > max) return max;
-  return hoy;
+const DIA_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+function fechaLegible(fecha) {
+  const d = new Date(`${fecha}T12:00:00Z`);
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${DIA_SEMANA[d.getUTCDay()]} ${dd}/${mm}/${d.getUTCFullYear()}`;
 }
 
-export default function PickingPackingEvidenciaPanel({ jornada, entidad, onCerrar }) {
+export default function PickingPackingEvidenciaPanel({ jornada, entidad, fecha, onCerrar }) {
   const [evidencias, setEvidencias] = useState(null);
   const [error, setError] = useState(null);
   const [subiendoCategoria, setSubiendoCategoria] = useState(null);
-  const [fecha, setFecha] = useState(() => hoyDentroDeRango(jornada.fecha_inicio, jornada.fecha_fin));
 
   useEffect(() => {
-    api.getAll(`/api/picking-packing/evidencias/?jornada=${jornada.id}&entidad=${entidad.id}`)
+    api.getAll(`/api/picking-packing/evidencias/?jornada=${jornada.id}&entidad=${entidad.id}&fecha=${fecha}`)
       .then(setEvidencias)
-      .catch(() => setError('No se pudo cargar la evidencia de esta entidad.'));
-  }, [jornada.id, entidad.id]);
+      .catch(() => setError('No se pudo cargar la evidencia de este día.'));
+  }, [jornada.id, entidad.id, fecha]);
 
   async function onSubirArchivos(categoria, e) {
     const archivos = Array.from(e.target.files || []);
@@ -93,25 +93,13 @@ export default function PickingPackingEvidenciaPanel({ jornada, entidad, onCerra
       <div className="evidencia-panel" onClick={(e) => e.stopPropagation()}>
         <div className="evidencia-panel__header">
           <div>
-            <p className="crumb">{jornada.nombre}</p>
+            <p className="crumb">{jornada.nombre} · {fechaLegible(fecha)}</p>
             <h3>{entidad.nombre}</h3>
           </div>
           <button className="btn-ghost" onClick={cerrarConResumen}>Cerrar</button>
         </div>
 
         {error && <p className="login-error">{error}</p>}
-
-        <div className="field" style={{ marginBottom: 16 }}>
-          <label htmlFor="ppFecha">Fecha de la evidencia a subir</label>
-          <input
-            id="ppFecha"
-            type="date"
-            min={jornada.fecha_inicio}
-            max={jornada.fecha_fin}
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-          />
-        </div>
 
         {evidencias === null && !error && <p className="tabla-cargando">Cargando…</p>}
 
@@ -126,13 +114,13 @@ export default function PickingPackingEvidenciaPanel({ jornada, entidad, onCerra
 
               <div className="evidencia-panel__lista">
                 {evidenciasCategoria.length === 0 && (
-                  <p className="evidencia-panel__vacio">Todavía no hay {categoria.label.toLowerCase()}.</p>
+                  <p className="evidencia-panel__vacio">Todavía no hay {categoria.label.toLowerCase()} para este día.</p>
                 )}
                 {evidenciasCategoria.map((ev) => (
                   <div key={ev.id} className="evidencia-item">
                     <div className="evidencia-item__info">
                       <a href={ev.url_descarga} target="_blank" rel="noreferrer">{ev.nombre_original}</a>
-                      <span>{ev.fecha} · subido {new Date(ev.creado_en).toLocaleString('es-MX')}</span>
+                      <span>subido {new Date(ev.creado_en).toLocaleString('es-MX')}</span>
                     </div>
                     <button className="btn-ghost" onClick={() => onEliminarEvidencia(ev.id)}>Eliminar</button>
                   </div>
