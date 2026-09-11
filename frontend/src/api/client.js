@@ -142,8 +142,17 @@ export const api = {
   // catalogos pequenos) -- para listas que pueden crecer mucho (ej. el
   // catalogo completo de unidades medicas sin filtrar) usa paginacion real
   // en la pantalla en vez de esto.
+  //
+  // page_size=1000 en la primera peticion (el backend lo admite hasta ese
+  // tope, ver config/pagination.py) -- sin esto, cualquier coleccion de mas
+  // de 50 filas (ej. las unidades de una entidad grande en
+  // JornadaDetallePage) hacia varias peticiones seguidas una tras otra,
+  // sumando cientos de ms de mas solo en viajes de red. DRF conserva
+  // page_size en la URL de "next" que genera, asi que no hace falta
+  // repetirlo en cada vuelta del ciclo.
   async getAll(path) {
-    let siguiente = path;
+    const separador = path.includes('?') ? '&' : '?';
+    let siguiente = `${path}${separador}page_size=1000`;
     let resultados = [];
     while (siguiente) {
       const data = await peticion(siguiente);
