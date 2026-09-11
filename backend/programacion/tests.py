@@ -6,7 +6,8 @@ from rest_framework.test import APITestCase
 
 from catalogos.management.commands.cargar_clues import Command as CargarCluesCommand
 from catalogos.models import Entidad, UnidadMedica
-from entregas.models import Entrega
+from entregas.models import Entrega, EvidenciaArchivo
+from picking_packing.models import Evidencia as EvidenciaPicking
 from usuarios.models import Usuario
 
 from .models import Jornada, ProgramacionVisita
@@ -214,6 +215,137 @@ class PrecargaJornadaTests(APITestCase):
 			f"/api/programacion-visitas/?jornada={respuesta.data['id']}"
 		)
 		self.assertIs(con_entrega.data["results"][0]["entregado"], True)
+
+	def test_monitoreo_agrega_datos_y_restringe_usuario_entidad(self):
+		respuesta = self.crear_jornada()
+		jornada_id = respuesta.data["id"]
+		fila_colima = ProgramacionVisita.objects.get(
+			jornada_id=jornada_id,
+			unidad_medica=self.unidad_colima,
+		)
+		fila_colima.claves_a_desplazar = 12
+		fila_colima.piezas_medicamento = 120
+		fila_colima.piezas_material_curacion = 40
+		fila_colima.save()
+		fila_parcial = ProgramacionVisita.objects.get(
+			jornada_id=jornada_id,
+			unidad_medica=self.unidad_jalisco,
+		)
+		fila_parcial.claves_a_desplazar = 8
+		fila_parcial.piezas_medicamento = 60
+		fila_parcial.piezas_material_curacion = 0
+		fila_parcial.fecha_distribucion_programada = date(2026, 9, 9)
+		fila_parcial.ruta_numero = fila_colima.ruta_numero
+		fila_parcial.save()
+		entrega = Entrega.objects.create(
+			programacion_visita=fila_colima,
+			entregado=True,
+			fecha_entrega=date(2026, 9, 9),
+			usuario=self.usuario_colima,
+		)
+		EvidenciaArchivo.objects.create(
+			entrega=entrega,
+			tipo=EvidenciaArchivo.TIPO_FOTO,
+			ruta_almacen="pruebas/foto.jpg",
+			nombre_original="foto.jpg",
+			subido_por=self.usuario_colima,
+		)
+		EvidenciaPicking.objects.create(
+			jornada_id=jornada_id,
+			entidad=self.colima,
+			fecha=date(2026, 9, 9),
+			tipo=EvidenciaPicking.TIPO_FOTO,
+			ruta_almacen="pruebas/picking.jpg",
+			nombre_original="picking.jpg",
+			subido_por=self.usuario_colima,
+		)
+		EvidenciaPicking.objects.create(
+			jornada_id=jornada_id,
+			entidad=self.jalisco,
+			fecha=date(2026, 9, 10),
+			tipo=EvidenciaPicking.TIPO_FOTO,
+			ruta_almacen="pruebas/picking-jalisco.jpg",
+			nombre_original="picking-jalisco.jpg",
+			subido_por=self.super_admin,
+		)
+
+		self.client.force_authenticate(self.super_admin)
+		nacional = self.client.get(f"/api/jornadas/{jornada_id}/monitoreo/")
+
+		self.assertEqual(nacional.status_code, status.HTTP_200_OK)
+		self.assertEqual(nacional.data["resumen"]["programadas"], 3)
+		self.assertEqual(nacional.data["resumen"]["registros"], 4)
+		self.assertEqual(nacional.data["resumen"]["capturadas"], 1)
+		self.assertEqual(nacional.data["resumen"]["pendientes_captura"], 3)
+		self.assertEqual(nacional.data["resumen"]["captura_porcentaje"], 25.0)
+		self.assertEqual(nacional.data["resumen"]["por_programar"], 1)
+		self.assertEqual(nacional.data["resumen"]["atendidas"], 1)
+		self.assertEqual(nacional.data["resumen"]["pendientes"], 3)
+		self.assertEqual(nacional.data["resumen"]["avance_porcentaje"], 25.0)
+		self.assertEqual(nacional.data["resumen"]["entidades"], 2)
+		self.assertEqual(nacional.data["resumen"]["evidencia_foto"], 1)
+		fila_evidencia = next(
+			fila for fila in nacional.data["lista_clues"] if fila["clues"] == self.unidad_colima.clues
+		)
+		self.assertIs(fila_evidencia["evidencia_foto"], True)
+		self.assertIs(fila_evidencia["evidencia_video"], False)
+		self.assertIs(fila_evidencia["evidencia_nota"], False)
+		self.assertIs(fila_evidencia["evidencia_completa"], False)
+		self.assertEqual(fila_evidencia["evidencia_avance"], 33.3)
+		self.assertEqual(fila_evidencia["tipo_unidad_medica"], "CENTRO DE SALUD")
+		self.assertEqual(fila_evidencia["quien_recibe"], "Contacto del catálogo")
+		self.assertEqual(fila_evidencia["telefono"], "312 123 4567 EXT 8")
+		self.assertEqual(
+			fila_evidencia["correo"],
+			"farmacia@ejemplo.test - almacen@ejemplo.test",
+		)
+		self.assertEqual(nacional.data["picking"]["fotos"], 2)
+		self.assertEqual(nacional.data["picking"]["dias_evidencia"], 2)
+		self.assertEqual(nacional.data["picking"]["avance_porcentaje"], 11.8)
+		self.assertEqual(len(nacional.data["lista_clues"]), 4)
+		self.assertEqual(len(nacional.data["filtros"]["entidades"]), 2)
+		jalisco = next(
+			fila for fila in nacional.data["entidades"] if fila["entidad"] == "Jalisco"
+		)
+		self.assertEqual(jalisco["capturadas"], 0)
+		self.assertEqual(jalisco["pendientes_captura"], 3)
+		self.assertEqual(jalisco["pendiente_captura_porcentaje"], 100.0)
+		self.assertEqual(jalisco["picking_dias_evidencia"], 1)
+		self.assertEqual(jalisco["picking_avance_porcentaje"], 5.9)
+		colima = next(
+			fila for fila in nacional.data["entidades"] if fila["entidad"] == "Colima"
+		)
+		self.assertEqual(
+			colima["picking_por_dia"],
+			[{"fecha": "2026-09-09", "foto": True, "video": False}],
+		)
+		fecha_compartida = next(
+			fila for fila in nacional.data["fechas"] if fila["fecha"] == "2026-09-09"
+		)
+		self.assertEqual(fecha_compartida["clues"], 2)
+		self.assertEqual(fecha_compartida["rutas"], 1)
+		self.assertEqual(fecha_compartida["claves"], 20)
+		self.assertEqual(fecha_compartida["piezas_medicamento"], 180)
+		self.assertEqual(fecha_compartida["piezas_material_curacion"], 40)
+
+		colima_filtrada = self.client.get(
+			f"/api/jornadas/{jornada_id}/monitoreo/?entidad={self.colima.id}"
+		)
+		self.assertEqual(colima_filtrada.data["resumen"]["registros"], 1)
+		self.assertEqual(colima_filtrada.data["resumen"]["capturadas"], 1)
+		self.assertEqual(colima_filtrada.data["resumen"]["captura_porcentaje"], 100.0)
+		self.assertEqual(colima_filtrada.data["resumen"]["atendidas"], 1)
+		self.assertEqual(colima_filtrada.data["entidades"][0]["entidad"], "Colima")
+		self.assertEqual(colima_filtrada.data["picking"]["fotos"], 1)
+
+		self.client.force_authenticate(self.usuario_colima)
+		entidad = self.client.get(f"/api/jornadas/{jornada_id}/monitoreo/")
+
+		self.assertEqual(entidad.status_code, status.HTTP_200_OK)
+		self.assertEqual(entidad.data["resumen"]["programadas"], 1)
+		self.assertEqual(entidad.data["resumen"]["atendidas"], 1)
+		self.assertEqual(entidad.data["resumen"]["entidades"], 1)
+		self.assertEqual(entidad.data["entidades"][0]["entidad"], "Colima")
 
 	def test_fila_precargada_se_puede_editar_y_eliminar(self):
 		respuesta = self.crear_jornada()

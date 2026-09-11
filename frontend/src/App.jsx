@@ -11,6 +11,7 @@ import UsuariosPage from './pages/UsuariosPage';
 import EvidenciaListaPage from './pages/EvidenciaListaPage';
 import PickingPackingPage from './pages/PickingPackingPage';
 import PickingPackingJornadaPage from './pages/PickingPackingJornadaPage';
+import MonitoreoPage from './pages/MonitoreoPage';
 
 function RequireAuth({ children }) {
   const { usuario, cargando } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="/jornadas" replace />} />
+          <Route path="monitoreo" element={<MonitoreoPage />} />
           <Route path="jornadas" element={<JornadasPage />} />
           <Route path="jornadas/:id" element={<JornadaDetallePage />} />
           <Route path="evidencia" element={<EvidenciaListaPage />} />
