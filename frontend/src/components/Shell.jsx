@@ -77,14 +77,14 @@ export default function Shell() {
             {ICONOS.panel} Monitoreo y Seguimiento
           </a>
           <div className="nav-section">Programación</div>
+          <NavLink to="/picking-packing" className="nav-item">
+            {ICONOS.pickingPacking} Picking & Packing
+          </NavLink>
           <NavLink to="/jornadas" className="nav-item">
             {ICONOS.jornadas} Distribuciones
           </NavLink>
           <NavLink to="/evidencia" className="nav-item">
             {ICONOS.evidencia} Evidencia
-          </NavLink>
-          <NavLink to="/picking-packing" className="nav-item">
-            {ICONOS.pickingPacking} Picking & Packing
           </NavLink>
           {(usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN) && (
             <>
