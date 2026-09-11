@@ -1,9 +1,11 @@
 /* Tabla entidad x dia -- puede tener bastantes columnas (una por dia del
    periodo) y bastantes filas (una por entidad participante), asi que
-   necesita scroll en ambos sentidos con la columna de Entidad y la de
-   Accion fijas, igual que .jornada-tabla en JornadaDetallePage.css pero
-   con columnas angostas de ancho fijo (no las 13 columnas de contenido
-   variable de esa tabla). */
+   necesita scroll en ambos sentidos con la columna de Entidad fija,
+   igual que .jornada-tabla en JornadaDetallePage.css pero con columnas
+   angostas de ancho fijo (no las 13 columnas de contenido variable de esa
+   tabla). Cada celda entidad x dia es directamente clicable (ver
+   .pp-indicador-boton) para ver/cargar evidencia de ese dia puntual -- ya
+   no hay columna de accion aparte. */
 .pp-tabla {
   height: max(320px, calc(100vh - 300px));
   overflow: auto;
@@ -42,20 +44,19 @@
   background: #fcfbf8;
 }
 
-.pp-tabla th:last-child,
-.pp-tabla td:last-child {
-  position: sticky;
-  right: 0;
-  z-index: 1;
-  background: var(--paper);
-  box-shadow: -1px 0 0 var(--border);
+.pp-indicador-boton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  cursor: pointer;
 }
-.pp-tabla thead th:last-child {
-  z-index: 2;
-  background: #fcfbf8;
-}
-.pp-tabla tbody tr:hover td:last-child {
-  background: #fcfbf8;
+.pp-indicador-boton:hover {
+  border-color: var(--border);
+  background: var(--guinda-pale-bg);
 }
 
 .pp-indicador {

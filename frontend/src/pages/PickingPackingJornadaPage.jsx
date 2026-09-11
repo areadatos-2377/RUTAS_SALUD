@@ -65,7 +65,7 @@ export default function PickingPackingJornadaPage() {
   // evidencia en que dia especifico (no solo "le falta algo, en algun dia").
   const [resumenPorDia, setResumenPorDia] = useState({});
   const [error, setError] = useState(null);
-  const [entidadPanel, setEntidadPanel] = useState(null);
+  const [celdaPanel, setCeldaPanel] = useState(null); // { entidad, fecha } | null
   const [fechaPresentacion, setFechaPresentacion] = useState(null);
   const [generando, setGenerando] = useState(false);
   const [generandoChecklist, setGenerandoChecklist] = useState(false);
@@ -120,7 +120,7 @@ export default function PickingPackingJornadaPage() {
 
   function onCerrarPanel(resumenPanel) {
     if (resumenPanel) cargarResumen();
-    setEntidadPanel(null);
+    setCeldaPanel(null);
   }
 
   async function onGenerarPresentacion() {
@@ -212,12 +212,11 @@ export default function PickingPackingJornadaPage() {
                 {dias.map((dia) => (
                   <th key={dia} className="pp-columna-dia">{etiquetaDia(dia)}</th>
                 ))}
-                <th></th>
               </tr>
             </thead>
             <tbody>
               {entidades.length === 0 && (
-                <tr><td colSpan={dias.length + 2} className="tabla-vacia">No hay entidades participando en esta distribución.</td></tr>
+                <tr><td colSpan={dias.length + 1} className="tabla-vacia">No hay entidades participando en esta distribución.</td></tr>
               )}
               {entidades.map((entidad) => {
                 const porDia = resumenPorDia[entidad.id] || {};
@@ -228,18 +227,25 @@ export default function PickingPackingJornadaPage() {
                       const flags = porDia[dia] || { foto: false, video: false };
                       return (
                         <td key={dia} className="pp-columna-dia">
-                          <span className={`pp-indicador${flags.foto ? ' pp-indicador--ok' : ''}`} title={flags.foto ? 'Ya tiene foto' : 'Falta foto'}>🖼️</span>
-                          <span className={`pp-indicador${flags.video ? ' pp-indicador--ok' : ''}`} title={flags.video ? 'Ya tiene video' : 'Falta video'}>🎞️</span>
+                          {puedeCargar ? (
+                            <button
+                              type="button"
+                              className="pp-indicador-boton"
+                              onClick={() => setCeldaPanel({ entidad, fecha: dia })}
+                              title={`Ver/cargar evidencia de ${entidad.nombre} — ${etiquetaDia(dia)}`}
+                            >
+                              <span className={`pp-indicador${flags.foto ? ' pp-indicador--ok' : ''}`}>🖼️</span>
+                              <span className={`pp-indicador${flags.video ? ' pp-indicador--ok' : ''}`}>🎞️</span>
+                            </button>
+                          ) : (
+                            <>
+                              <span className={`pp-indicador${flags.foto ? ' pp-indicador--ok' : ''}`} title={flags.foto ? 'Ya tiene foto' : 'Falta foto'}>🖼️</span>
+                              <span className={`pp-indicador${flags.video ? ' pp-indicador--ok' : ''}`} title={flags.video ? 'Ya tiene video' : 'Falta video'}>🎞️</span>
+                            </>
+                          )}
                         </td>
                       );
                     })}
-                    <td style={{ textAlign: 'right' }}>
-                      {puedeCargar && (
-                        <button className="btn-ghost" onClick={() => setEntidadPanel(entidad)}>
-                          Cargar evidencia
-                        </button>
-                      )}
-                    </td>
                   </tr>
                 );
               })}
@@ -248,10 +254,11 @@ export default function PickingPackingJornadaPage() {
         </div>
       )}
 
-      {entidadPanel && jornada && (
+      {celdaPanel && jornada && (
         <PickingPackingEvidenciaPanel
           jornada={jornada}
-          entidad={entidadPanel}
+          entidad={celdaPanel.entidad}
+          fecha={celdaPanel.fecha}
           onCerrar={onCerrarPanel}
         />
       )}
