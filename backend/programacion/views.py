@@ -1,4 +1,6 @@
 from django.db import transaction
+from collections import defaultdict
+
 from django.db.models import Exists, Min, OuterRef
 from django.utils.dateparse import parse_date
 from rest_framework import permissions, serializers, viewsets
@@ -7,6 +9,7 @@ from rest_framework.response import Response
 
 from catalogos.models import UnidadMedica
 from entregas.models import Entrega, EvidenciaArchivo
+from picking_packing.models import Evidencia as EvidenciaPicking
 from usuarios.models import Usuario
 from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
 
@@ -67,6 +70,264 @@ class JornadaViewSet(viewsets.ModelViewSet):
             ],
             batch_size=500,
         )
+
+    @action(detail=True, methods=["get"], url_path="monitoreo")
+    def monitoreo(self, request, pk=None):
+        jornada = self.get_object()
+        visitas_base = (
+            ProgramacionVisita.objects.filter(jornada=jornada)
+            .select_related("unidad_medica__entidad", "entrega")
+            .prefetch_related("entrega__evidencias")
+            .order_by("fecha_distribucion_programada", "unidad_medica__nombre")
+        )
+        if request.user.rol == Usuario.ROL_USUARIO_ENTIDAD:
+            visitas_base = visitas_base.filter(unidad_medica__entidad=request.user.entidad)
+
+        entidades_disponibles = list(
+            visitas_base.values(
+                "unidad_medica__entidad_id",
+                "unidad_medica__entidad__nombre",
+            )
+            .distinct()
+            .order_by("unidad_medica__entidad__nombre")
+        )
+        entidad_solicitada = request.query_params.get("entidad")
+        visitas = visitas_base
+        if entidad_solicitada:
+            if (
+                request.user.rol == Usuario.ROL_USUARIO_ENTIDAD
+                and str(request.user.entidad_id) != entidad_solicitada
+            ):
+                return Response({"detail": "No puedes consultar otra entidad."}, status=403)
+            visitas = visitas.filter(unidad_medica__entidad_id=entidad_solicitada)
+
+        resumen = {
+            "registros": 0,
+            "programadas": 0,
+            "capturadas": 0,
+            "pendientes_captura": 0,
+            "atendidas": 0,
+            "pendientes": 0,
+            "por_programar": 0,
+            "entidades": set(),
+            "claves": 0,
+            "piezas_medicamento": 0,
+            "piezas_material_curacion": 0,
+            "evidencia_foto": 0,
+            "evidencia_nota": 0,
+            "evidencia_video": 0,
+        }
+        por_entidad = defaultdict(lambda: {
+            "registros": 0,
+            "programadas": 0,
+            "capturadas": 0,
+            "pendientes_captura": 0,
+            "atendidas": 0,
+            "por_programar": 0,
+            "claves": 0,
+            "piezas_medicamento": 0,
+            "piezas_material_curacion": 0,
+            "evidencia_foto": 0,
+            "evidencia_nota": 0,
+            "evidencia_video": 0,
+        })
+        por_fecha = defaultdict(lambda: {
+            "programadas": 0,
+            "atendidas": 0,
+            "rutas": set(),
+            "claves": 0,
+            "piezas_medicamento": 0,
+            "piezas_material_curacion": 0,
+        })
+        lista_clues = []
+
+        for visita in visitas:
+            entidad = visita.unidad_medica.entidad
+            entidad_datos = por_entidad[(entidad.id, entidad.nombre)]
+            fecha = (
+                visita.fecha_distribucion_programada.isoformat()
+                if visita.fecha_distribucion_programada else None
+            )
+            try:
+                entrega = visita.entrega
+            except Entrega.DoesNotExist:
+                entrega = None
+            entregado = bool(entrega and entrega.entregado)
+            tipos_evidencia = {evidencia.tipo for evidencia in entrega.evidencias.all()} if entrega else set()
+            tiene_foto = EvidenciaArchivo.TIPO_FOTO in tipos_evidencia
+            tiene_nota = bool({EvidenciaArchivo.TIPO_PDF, EvidenciaArchivo.TIPO_DOCUMENTO} & tipos_evidencia)
+            tiene_video = EvidenciaArchivo.TIPO_VIDEO in tipos_evidencia
+            programada = fecha is not None
+            capturada = (
+                visita.claves_a_desplazar > 0
+                and visita.piezas_medicamento > 0
+                and visita.piezas_material_curacion > 0
+            )
+
+            resumen["registros"] += 1
+            resumen["programadas"] += int(programada)
+            resumen["capturadas"] += int(capturada)
+            resumen["pendientes_captura"] += int(not capturada)
+            resumen["atendidas"] += int(entregado)
+            resumen["por_programar"] += int(not programada)
+            resumen["entidades"].add(entidad.id)
+            resumen["claves"] += visita.claves_a_desplazar
+            resumen["piezas_medicamento"] += visita.piezas_medicamento
+            resumen["piezas_material_curacion"] += visita.piezas_material_curacion
+            resumen["evidencia_foto"] += int(tiene_foto)
+            resumen["evidencia_nota"] += int(tiene_nota)
+            resumen["evidencia_video"] += int(tiene_video)
+
+            entidad_datos["registros"] += 1
+            entidad_datos["programadas"] += int(programada)
+            entidad_datos["capturadas"] += int(capturada)
+            entidad_datos["pendientes_captura"] += int(not capturada)
+            entidad_datos["atendidas"] += int(entregado)
+            entidad_datos["por_programar"] += int(not programada)
+            entidad_datos["claves"] += visita.claves_a_desplazar
+            entidad_datos["piezas_medicamento"] += visita.piezas_medicamento
+            entidad_datos["piezas_material_curacion"] += visita.piezas_material_curacion
+            entidad_datos["evidencia_foto"] += int(tiene_foto)
+            entidad_datos["evidencia_nota"] += int(tiene_nota)
+            entidad_datos["evidencia_video"] += int(tiene_video)
+
+            if programada:
+                por_fecha[fecha]["programadas"] += 1
+                por_fecha[fecha]["atendidas"] += int(entregado)
+                if visita.ruta_numero:
+                    por_fecha[fecha]["rutas"].add(visita.ruta_numero)
+                por_fecha[fecha]["claves"] += visita.claves_a_desplazar
+                por_fecha[fecha]["piezas_medicamento"] += visita.piezas_medicamento
+                por_fecha[fecha]["piezas_material_curacion"] += visita.piezas_material_curacion
+
+            lista_clues.append({
+                "id": visita.id,
+                "clues": visita.unidad_medica_id,
+                "unidad": visita.unidad_medica.nombre,
+                "entidad": entidad.nombre,
+                "municipio": visita.unidad_medica.municipio,
+                "tipo_unidad_medica": visita.tipo_unidad_medica,
+                "quien_recibe": visita.quien_recibe,
+                "telefono": visita.telefono,
+                "correo": visita.correo,
+                "ruta": visita.ruta_numero,
+                "fecha_programada": fecha,
+                "claves": visita.claves_a_desplazar,
+                "piezas_medicamento": visita.piezas_medicamento,
+                "piezas_material_curacion": visita.piezas_material_curacion,
+                "entregado": entregado,
+                "tiene_evidencia": bool(tipos_evidencia),
+                "evidencia_foto": tiene_foto,
+                "evidencia_video": tiene_video,
+                "evidencia_nota": tiene_nota,
+                "evidencia_completa": tiene_foto and tiene_video and tiene_nota,
+                "evidencia_avance": round(
+                    (int(tiene_foto) + int(tiene_video) + int(tiene_nota)) * 100 / 3,
+                    1,
+                ),
+            })
+
+        resumen["pendientes"] = resumen["registros"] - resumen["atendidas"]
+        total_entidades = len(resumen["entidades"])
+        resumen["entidades"] = total_entidades
+        resumen["captura_porcentaje"] = round(
+            resumen["capturadas"] * 100 / resumen["registros"], 1
+        ) if resumen["registros"] else 0
+        resumen["pendiente_captura_porcentaje"] = round(
+            resumen["pendientes_captura"] * 100 / resumen["registros"], 1
+        ) if resumen["registros"] else 0
+        resumen["avance_porcentaje"] = round(
+            resumen["atendidas"] * 100 / resumen["registros"], 1
+        ) if resumen["registros"] else 0
+
+        evidencias_picking = EvidenciaPicking.objects.filter(jornada=jornada)
+        if request.user.rol == Usuario.ROL_USUARIO_ENTIDAD:
+            evidencias_picking = evidencias_picking.filter(entidad=request.user.entidad)
+        if entidad_solicitada:
+            evidencias_picking = evidencias_picking.filter(entidad_id=entidad_solicitada)
+        picking_por_entidad = defaultdict(lambda: {"foto": 0, "video": 0, "fechas": set()})
+        picking_por_dia = defaultdict(
+            lambda: defaultdict(lambda: {"foto": False, "video": False})
+        )
+        fechas_picking = set()
+        for evidencia in evidencias_picking.values("entidad_id", "tipo", "fecha").distinct():
+            picking_por_entidad[evidencia["entidad_id"]][evidencia["tipo"]] += 1
+            picking_por_entidad[evidencia["entidad_id"]]["fechas"].add(evidencia["fecha"])
+            picking_por_dia[evidencia["entidad_id"]][evidencia["fecha"]][evidencia["tipo"]] = True
+            fechas_picking.add(evidencia["fecha"])
+
+        entidades = []
+        dias_jornada = (jornada.fecha_fin - jornada.fecha_inicio).days + 1
+        for (entidad_id, nombre), datos in sorted(por_entidad.items(), key=lambda item: item[0][1]):
+            datos["pendientes"] = datos["registros"] - datos["atendidas"]
+            datos["captura_porcentaje"] = round(
+                datos["capturadas"] * 100 / datos["registros"], 1
+            ) if datos["registros"] else 0
+            datos["pendiente_captura_porcentaje"] = round(
+                datos["pendientes_captura"] * 100 / datos["registros"], 1
+            ) if datos["registros"] else 0
+            datos["avance_porcentaje"] = round(
+                datos["atendidas"] * 100 / datos["registros"], 1
+            ) if datos["registros"] else 0
+            entidades.append({
+                "id": entidad_id,
+                "entidad": nombre,
+                **datos,
+                "picking_foto": picking_por_entidad[entidad_id][EvidenciaPicking.TIPO_FOTO],
+                "picking_video": picking_por_entidad[entidad_id][EvidenciaPicking.TIPO_VIDEO],
+                "picking_dias_evidencia": len(picking_por_entidad[entidad_id]["fechas"]),
+                "picking_avance_porcentaje": round(
+                    len(picking_por_entidad[entidad_id]["fechas"]) * 100 / dias_jornada,
+                    1,
+                ) if dias_jornada else 0,
+                "picking_por_dia": [
+                    {
+                        "fecha": fecha.isoformat(),
+                        **marcas,
+                    }
+                    for fecha, marcas in sorted(picking_por_dia[entidad_id].items())
+                ],
+            })
+
+        fechas = [
+            {
+                "fecha": fecha,
+                "clues": datos["programadas"],
+                "rutas": len(datos["rutas"]),
+                "claves": datos["claves"],
+                "piezas_medicamento": datos["piezas_medicamento"],
+                "piezas_material_curacion": datos["piezas_material_curacion"],
+                "programadas": datos["programadas"],
+                "atendidas": datos["atendidas"],
+                "avance_porcentaje": round(datos["atendidas"] * 100 / datos["programadas"], 1),
+            }
+            for fecha, datos in sorted(por_fecha.items())
+        ]
+
+        return Response({
+            "jornada": JornadaSerializer(jornada).data,
+            "filtros": {
+                "entidad": entidad_solicitada or "",
+                "entidades": [
+                    {
+                        "id": item["unidad_medica__entidad_id"],
+                        "nombre": item["unidad_medica__entidad__nombre"],
+                    }
+                    for item in entidades_disponibles
+                ],
+            },
+            "resumen": resumen,
+            "entidades": entidades,
+            "fechas": fechas,
+            "picking": {
+                "fotos": sum(datos[EvidenciaPicking.TIPO_FOTO] for datos in picking_por_entidad.values()),
+                "videos": sum(datos[EvidenciaPicking.TIPO_VIDEO] for datos in picking_por_entidad.values()),
+                "dias_evidencia": len(fechas_picking),
+                "avance_porcentaje": round(len(fechas_picking) * 100 / dias_jornada, 1)
+                if dias_jornada else 0,
+            },
+            "lista_clues": lista_clues,
+        })
 
 
 class RutaViewSet(viewsets.ModelViewSet):

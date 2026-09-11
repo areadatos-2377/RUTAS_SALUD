@@ -73,9 +73,9 @@ export default function Shell() {
           <h1>Rutas de la salud</h1>
         </div>
         <nav className="nav">
-          <a href="http://10.17.238.119:8100/" className="nav-item">
+          <NavLink to="/monitoreo" className="nav-item">
             {ICONOS.panel} Monitoreo y Seguimiento
-          </a>
+          </NavLink>
           <div className="nav-section">Programación</div>
           <NavLink to="/picking-packing" className="nav-item">
             {ICONOS.pickingPacking} Picking & Packing
