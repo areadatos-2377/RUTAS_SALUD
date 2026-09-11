@@ -7,6 +7,11 @@ export const ROLES = {
   SUPER_ADMIN: 'super_admin',
   ADMIN_NACIONAL: 'admin_nacional',
   USUARIO_ENTIDAD: 'usuario_entidad',
+  // Solo lectura de Monitoreo y Seguimiento -- ninguna otra pestana. El
+  // backend ya lo trata como "cualquier autenticado que no sea
+  // usuario_entidad" para efectos de lectura (ver usuarios/models.py); el
+  // aislamiento a una sola pestana es responsabilidad de este frontend.
+  VISOR: 'visor',
 };
 
 export function AuthProvider({ children }) {

@@ -48,6 +48,7 @@ const ROL_LABEL = {
   [ROLES.SUPER_ADMIN]: 'Super administrador',
   [ROLES.ADMIN_NACIONAL]: 'Administrador nacional',
   [ROLES.USUARIO_ENTIDAD]: 'Usuario de entidad',
+  [ROLES.VISOR]: 'Visor',
 };
 
 export default function Shell() {
@@ -76,16 +77,20 @@ export default function Shell() {
           <NavLink to="/monitoreo" className="nav-item">
             {ICONOS.panel} Monitoreo y Seguimiento
           </NavLink>
-          <div className="nav-section">Programación</div>
-          <NavLink to="/picking-packing" className="nav-item">
-            {ICONOS.pickingPacking} Picking & Packing
-          </NavLink>
-          <NavLink to="/jornadas" className="nav-item">
-            {ICONOS.jornadas} Distribuciones
-          </NavLink>
-          <NavLink to="/evidencia" className="nav-item">
-            {ICONOS.evidencia} Evidencia
-          </NavLink>
+          {usuario?.rol !== ROLES.VISOR && (
+            <>
+              <div className="nav-section">Programación</div>
+              <NavLink to="/picking-packing" className="nav-item">
+                {ICONOS.pickingPacking} Picking & Packing
+              </NavLink>
+              <NavLink to="/jornadas" className="nav-item">
+                {ICONOS.jornadas} Distribuciones
+              </NavLink>
+              <NavLink to="/evidencia" className="nav-item">
+                {ICONOS.evidencia} Evidencia
+              </NavLink>
+            </>
+          )}
           {(usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN) && (
             <>
               <div className="nav-section">Administración</div>
