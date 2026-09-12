@@ -29,13 +29,13 @@ const COLUMNAS = [
   { key: 'unidad_medica_nombre', label: 'Nombre de la unidad', editable: false, clase: 'nombre' },
   { key: 'unidad_medica_municipio', label: 'Municipio', editable: false, vacio: '—' },
   { key: 'tipo_unidad_medica', label: 'Tipo de unidad', editable: false, vacio: '—' },
-  { key: 'ruta_numero', label: 'Ruta', editable: true, tipo: 'texto', vacio: '—', maxLength: 50 },
+  { key: 'ruta_numero', label: 'Ruta', editable: true, tipo: 'texto', vacio: '—', maxLength: 50, soloDigitos: true },
   { key: 'fecha_distribucion_programada', label: 'Fecha programada', editable: true, tipo: 'fecha', vacio: 'Pendiente' },
   { key: 'claves_a_desplazar', label: 'Claves', editable: true, tipo: 'numero' },
   { key: 'piezas_medicamento', label: 'Pzas. medicamento', editable: true, tipo: 'numero' },
   { key: 'piezas_material_curacion', label: 'Pzas. material', editable: true, tipo: 'numero' },
   { key: 'quien_recibe', label: 'Recibe', editable: true, tipo: 'texto', vacio: '—', maxLength: 150 },
-  { key: 'telefono', label: 'Teléfono', editable: true, tipo: 'texto', vacio: '—', maxLength: 100 },
+  { key: 'telefono', label: 'Teléfono', editable: true, tipo: 'texto', vacio: '—', maxLength: 10, soloDigitos: true },
   { key: 'correo', label: 'Correo', editable: true, tipo: 'texto', vacio: '—', maxLength: 150 },
 ];
 const COLUMNAS_EDITABLES = COLUMNAS.filter((c) => c.editable);
@@ -517,7 +517,15 @@ export default function JornadaDetallePage() {
           ) : columnaMasiva.tipo === 'numero' ? (
             <input type="number" min="0" value={masivoValor} onChange={(e) => setMasivoValor(e.target.value)} />
           ) : (
-            <input type="text" maxLength={columnaMasiva.maxLength} placeholder="Valor nuevo" value={masivoValor} onChange={(e) => setMasivoValor(e.target.value)} />
+            <input
+              type="text"
+              inputMode={columnaMasiva.soloDigitos ? 'numeric' : undefined}
+              pattern={columnaMasiva.key === 'telefono' ? '[0-9]{10}' : columnaMasiva.soloDigitos ? '[0-9]*' : undefined}
+              maxLength={columnaMasiva.maxLength}
+              placeholder="Valor nuevo"
+              value={masivoValor}
+              onChange={(e) => setMasivoValor(columnaMasiva.soloDigitos ? e.target.value.replace(/\D/g, '') : e.target.value)}
+            />
           )}
           <button
             className="btn-primary"
@@ -589,9 +597,11 @@ export default function JornadaDetallePage() {
                           ) : (
                             <input
                               type="text" autoFocus
+                              inputMode={columna.soloDigitos ? 'numeric' : undefined}
+                              pattern={columna.key === 'telefono' ? '[0-9]{10}' : columna.soloDigitos ? '[0-9]*' : undefined}
                               maxLength={columna.maxLength}
                               value={valorEdicion}
-                              onChange={(e) => setValorEdicion(e.target.value)}
+                              onChange={(e) => setValorEdicion(columna.soloDigitos ? e.target.value.replace(/\D/g, '') : e.target.value)}
                               onBlur={() => confirmarEdicionCelda(visita, columna)}
                               onKeyDown={onTeclaCelda}
                             />

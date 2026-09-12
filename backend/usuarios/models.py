@@ -24,9 +24,9 @@ class Usuario(AbstractUser):
     # frontend (rutas/nav).
     ROL_VISOR = "visor"
     ROL_CHOICES = [
-        (ROL_SUPER_ADMIN, "Super administrador"),
-        (ROL_ADMIN_NACIONAL, "Administrador nacional"),
-        (ROL_USUARIO_ENTIDAD, "Usuario de entidad"),
+        (ROL_SUPER_ADMIN, "Administrador"),
+        (ROL_ADMIN_NACIONAL, "Nacional"),
+        (ROL_USUARIO_ENTIDAD, "Capturista"),
         (ROL_VISOR, "Visor"),
     ]
 

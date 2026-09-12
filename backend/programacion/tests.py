@@ -111,23 +111,13 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(visitas.count(), 4)
 		self.assertFalse(visitas.filter(unidad_medica=self.hospital).exists())
 		fila = visitas.get(unidad_medica=self.unidad_colima)
-		self.assertEqual(fila.fecha_distribucion_programada, date(2026, 9, 9))
+		self.assertIsNone(fila.fecha_distribucion_programada)
 		self.assertEqual(fila.ruta_numero, "1")
 		self.assertEqual(fila.tipo_unidad_medica, "CENTRO DE SALUD")
 		self.assertEqual(fila.quien_recibe, "Contacto del catálogo")
 		self.assertEqual(fila.telefono, "312 123 4567 EXT 8")
 		self.assertEqual(fila.correo, "farmacia@ejemplo.test - almacen@ejemplo.test")
-		self.assertEqual(
-			visitas.get(unidad_medica=self.unidad_jalisco).fecha_distribucion_programada,
-			date(2026, 9, 11),
-		)
-		self.assertEqual(
-			visitas.get(unidad_medica=self.unidad_tardia).fecha_distribucion_programada,
-			date(2026, 9, 25),
-		)
-		self.assertIsNone(
-			visitas.get(unidad_medica=self.unidad_sin_fecha).fecha_distribucion_programada
-		)
+		self.assertFalse(visitas.exclude(fecha_distribucion_programada=None).exists())
 
 	def test_precarga_deja_fechas_vacias_si_no_hay_referencias(self):
 		UnidadMedica.objects.filter(nivel_atencion=UnidadMedica.NIVEL_PRIMER).update(
@@ -144,7 +134,7 @@ class PrecargaJornadaTests(APITestCase):
 			).exists()
 		)
 
-	def test_segundo_tercer_nivel_usa_su_propio_dia_cero(self):
+	def test_segundo_tercer_nivel_tambien_deja_fechas_pendientes(self):
 		self.client.force_authenticate(self.super_admin)
 		respuesta = self.client.post(
 			"/api/jornadas/",
@@ -161,14 +151,7 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
 		visitas = ProgramacionVisita.objects.filter(jornada_id=respuesta.data["id"])
 		self.assertEqual(visitas.count(), 2)
-		self.assertEqual(
-			visitas.get(unidad_medica=self.hospital).fecha_distribucion_programada,
-			date(2026, 9, 9),
-		)
-		self.assertEqual(
-			visitas.get(unidad_medica=self.hospital_tercer_nivel).fecha_distribucion_programada,
-			date(2026, 9, 11),
-		)
+		self.assertFalse(visitas.exclude(fecha_distribucion_programada=None).exists())
 
 	def test_restriccion_impide_duplicar_clues_en_jornada(self):
 		respuesta = self.crear_jornada()
@@ -273,12 +256,12 @@ class PrecargaJornadaTests(APITestCase):
 		nacional = self.client.get(f"/api/jornadas/{jornada_id}/monitoreo/")
 
 		self.assertEqual(nacional.status_code, status.HTTP_200_OK)
-		self.assertEqual(nacional.data["resumen"]["programadas"], 3)
+		self.assertEqual(nacional.data["resumen"]["programadas"], 1)
 		self.assertEqual(nacional.data["resumen"]["registros"], 4)
 		self.assertEqual(nacional.data["resumen"]["capturadas"], 1)
 		self.assertEqual(nacional.data["resumen"]["pendientes_captura"], 3)
 		self.assertEqual(nacional.data["resumen"]["captura_porcentaje"], 25.0)
-		self.assertEqual(nacional.data["resumen"]["por_programar"], 1)
+		self.assertEqual(nacional.data["resumen"]["por_programar"], 3)
 		self.assertEqual(nacional.data["resumen"]["atendidas"], 1)
 		self.assertEqual(nacional.data["resumen"]["pendientes"], 3)
 		self.assertEqual(nacional.data["resumen"]["avance_porcentaje"], 25.0)
@@ -322,11 +305,11 @@ class PrecargaJornadaTests(APITestCase):
 		fecha_compartida = next(
 			fila for fila in nacional.data["fechas"] if fila["fecha"] == "2026-09-09"
 		)
-		self.assertEqual(fecha_compartida["clues"], 2)
+		self.assertEqual(fecha_compartida["clues"], 1)
 		self.assertEqual(fecha_compartida["rutas"], 1)
-		self.assertEqual(fecha_compartida["claves"], 20)
-		self.assertEqual(fecha_compartida["piezas_medicamento"], 180)
-		self.assertEqual(fecha_compartida["piezas_material_curacion"], 40)
+		self.assertEqual(fecha_compartida["claves"], 8)
+		self.assertEqual(fecha_compartida["piezas_medicamento"], 60)
+		self.assertEqual(fecha_compartida["piezas_material_curacion"], 0)
 
 		colima_filtrada = self.client.get(
 			f"/api/jornadas/{jornada_id}/monitoreo/?entidad={self.colima.id}"
@@ -342,7 +325,7 @@ class PrecargaJornadaTests(APITestCase):
 		entidad = self.client.get(f"/api/jornadas/{jornada_id}/monitoreo/")
 
 		self.assertEqual(entidad.status_code, status.HTTP_200_OK)
-		self.assertEqual(entidad.data["resumen"]["programadas"], 1)
+		self.assertEqual(entidad.data["resumen"]["programadas"], 0)
 		self.assertEqual(entidad.data["resumen"]["atendidas"], 1)
 		self.assertEqual(entidad.data["resumen"]["entidades"], 1)
 		self.assertEqual(entidad.data["entidades"][0]["entidad"], "Colima")
@@ -358,11 +341,11 @@ class PrecargaJornadaTests(APITestCase):
 		editada = self.client.patch(
 			f"/api/programacion-visitas/{fila.id}/",
 			{
-				"ruta_numero": "Ruta 3",
+				"ruta_numero": "3",
 				"fecha_distribucion_programada": "2026-09-10",
 				"claves_a_desplazar": 12,
 				"quien_recibe": "Responsable de unidad",
-				"telefono": "312 765 4321 EXT 20",
+				"telefono": "3127654321",
 				"correo": "contacto actualizado",
 			},
 			format="json",
@@ -370,11 +353,11 @@ class PrecargaJornadaTests(APITestCase):
 
 		self.assertEqual(editada.status_code, status.HTTP_200_OK)
 		fila.refresh_from_db()
-		self.assertEqual(fila.ruta_numero, "Ruta 3")
+		self.assertEqual(fila.ruta_numero, "3")
 		self.assertEqual(fila.fecha_distribucion_programada, date(2026, 9, 10))
 		self.assertEqual(fila.claves_a_desplazar, 12)
 		self.assertEqual(fila.quien_recibe, "Responsable de unidad")
-		self.assertEqual(fila.telefono, "312 765 4321 EXT 20")
+		self.assertEqual(fila.telefono, "3127654321")
 		self.assertEqual(fila.correo, "contacto actualizado")
 
 		fuera_de_periodo = self.client.patch(
@@ -389,6 +372,30 @@ class PrecargaJornadaTests(APITestCase):
 		eliminada = self.client.delete(f"/api/programacion-visitas/{fila.id}/")
 		self.assertEqual(eliminada.status_code, status.HTTP_204_NO_CONTENT)
 		self.assertFalse(ProgramacionVisita.objects.filter(pk=fila.id).exists())
+
+	def test_ruta_y_telefono_solo_aceptan_digitos(self):
+		respuesta = self.crear_jornada()
+		fila = ProgramacionVisita.objects.get(
+			jornada_id=respuesta.data["id"],
+			unidad_medica=self.unidad_colima,
+		)
+		self.client.force_authenticate(self.usuario_colima)
+
+		for campo, valor in (("ruta_numero", "Ruta 3"), ("telefono", "312 765 4321"), ("telefono", "123")):
+			respuesta_invalida = self.client.patch(
+				f"/api/programacion-visitas/{fila.id}/",
+				{campo: valor},
+				format="json",
+			)
+			self.assertEqual(respuesta_invalida.status_code, status.HTTP_400_BAD_REQUEST)
+
+		for campo, valor in (("ruta_numero", "Ruta 4"), ("telefono", "123")):
+			respuesta_masiva = self.client.post(
+				"/api/programacion-visitas/actualizar-masivo/",
+				{"ids": [fila.id], "campo": campo, "valor": valor},
+				format="json",
+			)
+			self.assertEqual(respuesta_masiva.status_code, status.HTTP_400_BAD_REQUEST)
 
 	def test_rellenar_contactos_existentes_solo_completa_campos_vacios(self):
 		respuesta = self.crear_jornada()
