@@ -149,6 +149,11 @@ class ProgramacionVisitaSerializer(serializers.ModelSerializer):
         ):
             raise serializers.ValidationError("No puedes programar sobre una ruta de otra entidad.")
 
+        if self.instance.jornada.esta_cerrada_para(request.user):
+            raise serializers.ValidationError(
+                "Esta distribución está cerrada; ya no se puede editar lo capturado."
+            )
+
         fecha_programada = attrs.get(
             "fecha_distribucion_programada",
             self.instance.fecha_distribucion_programada,

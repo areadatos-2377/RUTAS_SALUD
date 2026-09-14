@@ -5,6 +5,7 @@ from django.db.models import Exists, OuterRef
 from django.utils.dateparse import parse_date
 from rest_framework import permissions, serializers, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from catalogos.models import UnidadMedica
@@ -373,6 +374,13 @@ class ProgramacionVisitaViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, PuedeGestionarProgramacion]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
+    def perform_destroy(self, instance):
+        if instance.jornada.esta_cerrada_para(self.request.user):
+            raise PermissionDenied(
+                "Esta distribución está cerrada; ya no se puede eliminar una unidad capturada."
+            )
+        instance.delete()
+
     def get_queryset(self):
         qs = super().get_queryset()
         usuario = self.request.user
@@ -425,12 +433,18 @@ class ProgramacionVisitaViewSet(viewsets.ModelViewSet):
         if not jornadas_afectadas:
             return Response({"detail": "Ninguno de los ids es válido para tu usuario."}, status=400)
 
+        jornadas_en_lote = list(Jornada.objects.filter(id__in=jornadas_afectadas))
+        if any(jornada.esta_cerrada_para(request.user) for jornada in jornadas_en_lote):
+            return Response({
+                "detail": "Alguna de estas filas pertenece a una distribución cerrada; ya no se puede editar.",
+            }, status=403)
+
         if campo == _CAMPO_FECHA_MASIVO:
             valor_final = parse_date(valor) if valor else None
             if valor and valor_final is None:
                 return Response({"valor": ["Fecha inválida."]}, status=400)
             if valor_final is not None:
-                for jornada in Jornada.objects.filter(id__in=jornadas_afectadas):
+                for jornada in jornadas_en_lote:
                     if not (jornada.fecha_inicio <= valor_final <= jornada.fecha_fin):
                         return Response({
                             "valor": [

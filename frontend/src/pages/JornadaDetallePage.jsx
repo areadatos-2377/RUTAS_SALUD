@@ -97,6 +97,12 @@ export default function JornadaDetallePage() {
   const puedeGenerarPresentacion = usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
 
   const [jornada, setJornada] = useState(null);
+  // Distribucion cerrada (periodo ya paso, fecha_fin < hoy -- el backend
+  // expone esto como estatus "concluido"): ya no se puede editar/eliminar
+  // lo capturado (ProgramacionVisita), solo cargar evidencia -- super_admin
+  // es la unica excepcion (ver Jornada.esta_cerrada_para() en el backend,
+  // misma regla).
+  const distribucionCerrada = jornada?.estatus === 'concluido' && usuario?.rol !== ROLES.SUPER_ADMIN;
   const [entidades, setEntidades] = useState([]);
   const [entidadId, setEntidadId] = useState(
     usuario?.rol === ROLES.USUARIO_ENTIDAD ? String(usuario.entidad) : '',
@@ -291,7 +297,7 @@ export default function JornadaDetallePage() {
   // Edicion en linea -----------------------------------------------------
 
   function iniciarEdicion(visita, columna) {
-    if (!columna.editable || !puedeEscribir) return;
+    if (!columna.editable || !puedeEscribir || distribucionCerrada) return;
     setCeldaEditando({ visitaId: visita.id, campo: columna.key });
     setValorEdicion(valorCrudoParaEditar(visita, columna));
   }
@@ -423,6 +429,13 @@ export default function JornadaDetallePage() {
               · {jornada.fecha_inicio} al {jornada.fecha_fin}
             </p>
           )}
+          {jornada?.estatus === 'concluido' && (
+            <p className="jornada-meta jornada-meta--cerrada">
+              {usuario?.rol === ROLES.SUPER_ADMIN
+                ? 'Esta distribución está cerrada — como super_admin, sigues pudiendo editar y eliminar lo capturado.'
+                : 'Esta distribución está cerrada — ya no se puede editar ni eliminar lo capturado, solo cargar evidencia.'}
+            </p>
+          )}
         </div>
         {puedeGenerarPresentacion && visitas && (
           <div className="jornada-topbar__presentacion">
@@ -506,7 +519,7 @@ export default function JornadaDetallePage() {
       {error && <p className="login-error" style={{ maxWidth: 520 }}>{error}</p>}
       {visitas === null && !error && <p className="tabla-cargando">Cargando unidades…</p>}
 
-      {puedeEscribir && visitas && (
+      {puedeEscribir && !distribucionCerrada && visitas && (
         <div className="jornada-masivo">
           <span className="jornada-masivo__etiqueta">Editar en masa las filas visibles:</span>
           <select value={masivoCampo} onChange={(e) => { setMasivoCampo(e.target.value); setMasivoValor(''); }}>
@@ -573,7 +586,7 @@ export default function JornadaDetallePage() {
                       <td
                         key={columna.key}
                         className={columna.clase}
-                        data-editable={columna.editable && puedeEscribir ? 'true' : undefined}
+                        data-editable={columna.editable && puedeEscribir && !distribucionCerrada ? 'true' : undefined}
                         onDoubleClick={() => iniciarEdicion(visita, columna)}
                       >
                         {editandoEstaCelda ? (
@@ -655,7 +668,9 @@ export default function JornadaDetallePage() {
                         {visita.fecha_distribucion_programada && (
                           <button className="btn-ghost" onClick={() => setVisitaEvidencia(visita)}>Evidencia</button>
                         )}
-                        <button className="btn-ghost" onClick={() => onEliminar(visita)}>Eliminar</button>
+                        {!distribucionCerrada && (
+                          <button className="btn-ghost" onClick={() => onEliminar(visita)}>Eliminar</button>
+                        )}
                       </>
                     )}
                   </td>
