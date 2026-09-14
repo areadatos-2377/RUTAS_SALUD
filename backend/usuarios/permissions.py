@@ -48,6 +48,19 @@ class PuedeDescargarChecklistPicking(BasePermission):
         )
 
 
+class PuedeVerMonitoreo(BasePermission):
+    """Visores y administradores pueden consultar Monitoreo y Seguimiento."""
+
+    def has_permission(self, request, view):
+        usuario = request.user
+        return bool(
+            usuario
+            and usuario.is_authenticated
+            and usuario.rol
+            in (Usuario.ROL_VISOR, Usuario.ROL_ADMIN_NACIONAL, Usuario.ROL_SUPER_ADMIN)
+        )
+
+
 class PuedeEditarCoordinador(BasePermission):
     """Actualizar el coordinador estatal de una entidad: admin_nacional o
     super_admin. Los coordinadores cambian cada cierto tiempo y admin_nacional

@@ -214,7 +214,7 @@ class PrecargaJornadaTests(APITestCase):
 		)
 		self.assertIs(con_entrega.data["results"][0]["entregado"], True)
 
-	def test_monitoreo_agrega_datos_y_restringe_usuario_entidad(self):
+	def test_monitoreo_agrega_datos_y_bloquea_usuario_entidad(self):
 		jornada_anterior = Jornada.objects.create(
 			nombre="Distribución anterior",
 			tipo=Jornada.TIPO_ORDINARIA,
@@ -377,11 +377,7 @@ class PrecargaJornadaTests(APITestCase):
 		self.client.force_authenticate(self.usuario_colima)
 		entidad = self.client.get(f"/api/jornadas/{jornada_id}/monitoreo/")
 
-		self.assertEqual(entidad.status_code, status.HTTP_200_OK)
-		self.assertEqual(entidad.data["resumen"]["programadas"], 0)
-		self.assertEqual(entidad.data["resumen"]["atendidas"], 1)
-		self.assertEqual(entidad.data["resumen"]["entidades"], 1)
-		self.assertEqual(entidad.data["entidades"][0]["entidad"], "Colima")
+		self.assertEqual(entidad.status_code, status.HTTP_403_FORBIDDEN)
 
 	def test_monitoreo_historico_agrupa_clues_programadas_por_entidad(self):
 		respuesta = self.crear_jornada()

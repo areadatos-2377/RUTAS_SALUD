@@ -12,7 +12,11 @@ from catalogos.models import UnidadMedica
 from entregas.models import Entrega, EvidenciaArchivo
 from picking_packing.models import Evidencia as EvidenciaPicking
 from usuarios.models import Usuario
-from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
+from usuarios.permissions import (
+    PuedeGestionarJornadas,
+    PuedeGestionarProgramacion,
+    PuedeVerMonitoreo,
+)
 
 from .models import Jornada, ProgramacionVisita, Ruta
 from .serializers import (
@@ -59,7 +63,12 @@ class JornadaViewSet(viewsets.ModelViewSet):
             batch_size=500,
         )
 
-    @action(detail=True, methods=["get"], url_path="monitoreo")
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="monitoreo",
+        permission_classes=[permissions.IsAuthenticated, PuedeVerMonitoreo],
+    )
     def monitoreo(self, request, pk=None):
         jornada = self.get_object()
         visitas_base = (

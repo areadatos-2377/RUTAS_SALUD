@@ -17,6 +17,7 @@ import MonitoreoPage from './pages/MonitoreoPage';
 // InicioRedirect y RequireRole mas abajo). Aparte en su propia constante
 // para no repetir el arreglo 5 veces en las rutas de Programación.
 const ROLES_NO_VISOR = [ROLES.USUARIO_ENTIDAD, ROLES.ADMIN_NACIONAL, ROLES.SUPER_ADMIN];
+const ROLES_MONITOREO = [ROLES.VISOR, ROLES.ADMIN_NACIONAL, ROLES.SUPER_ADMIN];
 
 function RequireAuth({ children }) {
   const { usuario, cargando } = useAuth();
@@ -63,7 +64,14 @@ export default function App() {
           }
         >
           <Route index element={<InicioRedirect />} />
-          <Route path="monitoreo" element={<MonitoreoPage />} />
+          <Route
+            path="monitoreo"
+            element={
+              <RequireRole roles={ROLES_MONITOREO}>
+                <MonitoreoPage />
+              </RequireRole>
+            }
+          />
           <Route
             path="jornadas"
             element={
