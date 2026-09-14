@@ -156,7 +156,6 @@ export default function MonitoreoPage() {
   const [entidadId, setEntidadId] = useState('');
   const [datos, setDatos] = useState(null);
   const [busqueda, setBusqueda] = useState('');
-  const [entidadEvidencia, setEntidadEvidencia] = useState('');
   const [busquedaEvidencia, setBusquedaEvidencia] = useState('');
   const [metricaFecha, setMetricaFecha] = useState('rutas');
   const [apartadoAbierto, setApartadoAbierto] = useState('01');
@@ -196,7 +195,6 @@ export default function MonitoreoPage() {
     setDatos(null);
     setError(null);
     setBusqueda('');
-    setEntidadEvidencia('');
     setBusquedaEvidencia('');
   }
 
@@ -238,12 +236,9 @@ export default function MonitoreoPage() {
     const texto = `${fila.clues} ${fila.unidad} ${fila.entidad} ${fila.municipio} ${fila.ruta} ${fila.tipo_unidad_medica} ${fila.quien_recibe} ${fila.telefono} ${fila.correo}`.toLocaleLowerCase('es');
     return texto.includes(busqueda.trim().toLocaleLowerCase('es'));
   });
-  const entidadesEvidencia = [...new Set((datos?.lista_clues || []).map((fila) => fila.entidad))]
-    .sort((a, b) => a.localeCompare(b, 'es'));
   const evidenciaFiltrada = (datos?.lista_clues || []).filter((fila) => {
-    const coincideEntidad = !entidadEvidencia || fila.entidad === entidadEvidencia;
     const texto = `${fila.clues} ${fila.unidad}`.toLocaleLowerCase('es');
-    return coincideEntidad && texto.includes(busquedaEvidencia.trim().toLocaleLowerCase('es'));
+    return texto.includes(busquedaEvidencia.trim().toLocaleLowerCase('es'));
   });
   const resumen = datos?.resumen;
   const puedeDescargarChecklist = usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
@@ -310,12 +305,22 @@ export default function MonitoreoPage() {
 
   return (
     <div className="monitor-page">
-      <div className="monitor-resumen-fijo">
-        <div className="topbar monitor-topbar">
-          <h2>Monitoreo y Seguimiento</h2>
-        </div>
+      <div className="topbar monitor-topbar">
+        <h2>Monitoreo y Seguimiento</h2>
+      </div>
 
-        <section className="monitor-filtros" aria-label="Filtros de monitoreo">
+      {datos && (
+        <section className="monitor-kpis" aria-label="Indicadores generales">
+          <Kpi icono={<CalendarDays />} etiqueta="CLUES programadas" valor={numero(resumen.registros)} detalle={`${numero(resumen.capturadas)} capturadas`} tono="neutral" />
+          <Kpi icono={<CheckCircle2 />} etiqueta="CLUES atendidas" valor={numero(resumen.atendidas)} detalle={`${resumen.avance_porcentaje}% de avance`} tono="verde" />
+          <Kpi icono={<ListChecks />} etiqueta="Pendientes" valor={numero(resumen.pendientes)} detalle="Por abastecer" tono="guinda" />
+          <Kpi icono={<Boxes />} etiqueta="Claves" valor={numero(resumen.claves)} detalle="A desplazar" tono="dorado" />
+          <Kpi icono={<PackageCheck />} etiqueta="Medicamento" valor={numero(resumen.piezas_medicamento)} detalle="Piezas programadas" tono="verde" />
+          <Kpi icono={<PackageCheck />} etiqueta="Material de curación" valor={numero(resumen.piezas_material_curacion)} detalle="Piezas programadas" tono="dorado" />
+        </section>
+      )}
+
+      <section className="monitor-filtros" aria-label="Filtros de monitoreo">
         <div className="field">
           <label htmlFor="monitor-nivel">Nivel</label>
           <select id="monitor-nivel" value={nivel} onChange={(e) => onCambiarNivel(e.target.value)}>
@@ -350,24 +355,12 @@ export default function MonitoreoPage() {
             <span>{datos.jornada.fecha_inicio} al {datos.jornada.fecha_fin}</span>
           </div>
         )}
-        </section>
+      </section>
 
-        {error && <p className="login-error">{error}</p>}
-        {jornadas === null && !error && <p className="tabla-cargando">Cargando distribuciones…</p>}
-        {jornadas?.length === 0 && <p className="tabla-cargando">Todavía no hay distribuciones.</p>}
-        {jornadas && jornadaId && datos === null && !error && <p className="tabla-cargando">Calculando avance…</p>}
-
-        {datos && (
-          <section className="monitor-kpis" aria-label="Indicadores generales">
-            <Kpi icono={<CalendarDays />} etiqueta="CLUES programadas" valor={numero(resumen.registros)} detalle={`${numero(resumen.capturadas)} capturadas`} tono="neutral" />
-            <Kpi icono={<CheckCircle2 />} etiqueta="CLUES atendidas" valor={numero(resumen.atendidas)} detalle={`${resumen.avance_porcentaje}% de avance`} tono="verde" />
-            <Kpi icono={<ListChecks />} etiqueta="Pendientes" valor={numero(resumen.pendientes)} detalle="Por abastecer" tono="guinda" />
-            <Kpi icono={<Boxes />} etiqueta="Claves" valor={numero(resumen.claves)} detalle="A desplazar" tono="dorado" />
-            <Kpi icono={<PackageCheck />} etiqueta="Medicamento" valor={numero(resumen.piezas_medicamento)} detalle="Piezas programadas" tono="verde" />
-            <Kpi icono={<PackageCheck />} etiqueta="Material de curación" valor={numero(resumen.piezas_material_curacion)} detalle="Piezas programadas" tono="dorado" />
-          </section>
-        )}
-      </div>
+      {error && <p className="login-error">{error}</p>}
+      {jornadas === null && !error && <p className="tabla-cargando">Cargando distribuciones…</p>}
+      {jornadas?.length === 0 && <p className="tabla-cargando">Todavía no hay distribuciones.</p>}
+      {jornadas && jornadaId && datos === null && !error && <p className="tabla-cargando">Calculando avance…</p>}
 
       {datos && (
           <div className="monitor-apartados">
@@ -414,13 +407,6 @@ export default function MonitoreoPage() {
 
             <Apartado numeroOrden="06" titulo="EVIDENCIA POR UNIDAD MÉDICA" detalle={`${numero(resumen.registros)} unidades`} abierto={apartadoAbierto === '06'} onAlternar={() => alternarApartado('06')}>
               <div className="monitor-evidencia__filtros">
-                <div className="field">
-                  <label htmlFor="monitor-evidencia-entidad">Entidad</label>
-                  <select id="monitor-evidencia-entidad" value={entidadEvidencia} onChange={(e) => setEntidadEvidencia(e.target.value)}>
-                    <option value="">Todas</option>
-                    {entidadesEvidencia.map((entidad) => <option key={entidad} value={entidad}>{entidad}</option>)}
-                  </select>
-                </div>
                 <div className="field">
                   <label htmlFor="monitor-evidencia-clues">CLUES</label>
                   <label className="monitor-evidencia__busqueda">

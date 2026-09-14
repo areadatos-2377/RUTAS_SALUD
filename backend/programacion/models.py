@@ -14,9 +14,8 @@ class Jornada(models.Model):
         (TIPO_EMERGENCIA, "Emergencia"),
     ]
 
-    # Ciclo de vida completo aun sin definir con el area (ver blueprint-v01.md
-    # seccion 9, pendiente #4). Estos 4 estatus son un punto de partida razonable,
-    # no una decision cerrada.
+    # Valores historicos conservados para no migrar datos existentes. La API
+    # expone el estatus automatico segun fecha_fin; ver JornadaSerializer.
     ESTATUS_PLANEADA = "planeada"
     ESTATUS_EN_CURSO = "en_curso"
     ESTATUS_CERRADA = "cerrada"

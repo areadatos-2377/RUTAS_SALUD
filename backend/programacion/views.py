@@ -1,7 +1,7 @@
 from django.db import transaction
 from collections import defaultdict
 
-from django.db.models import Exists, Min, OuterRef
+from django.db.models import Exists, OuterRef
 from django.utils.dateparse import parse_date
 from rest_framework import permissions, serializers, viewsets
 from rest_framework.decorators import action
@@ -14,7 +14,13 @@ from usuarios.models import Usuario
 from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
 
 from .models import Jornada, ProgramacionVisita, Ruta
-from .serializers import JornadaSerializer, ProgramacionVisitaSerializer, RutaSerializer
+from .serializers import (
+    JornadaSerializer,
+    ProgramacionVisitaSerializer,
+    RutaSerializer,
+    validar_ruta_numero,
+    validar_telefono,
+)
 
 # Mismos 8 campos que ProgramacionVisitaSerializer deja editables (el resto
 # son read_only_fields: jornada, ruta, unidad_medica, bloqueada,
@@ -22,20 +28,6 @@ from .serializers import JornadaSerializer, ProgramacionVisitaSerializer, RutaSe
 _CAMPOS_TEXTO_MASIVO = {"ruta_numero": 50, "quien_recibe": 150, "telefono": 100, "correo": 150}
 _CAMPOS_ENTERO_MASIVO = {"claves_a_desplazar", "piezas_medicamento", "piezas_material_curacion"}
 _CAMPO_FECHA_MASIVO = "fecha_distribucion_programada"
-
-
-def fecha_programada_inicial(jornada, fecha_referencia, fecha_base):
-    if fecha_referencia is None or fecha_base is None:
-        return None
-    fecha_programada = jornada.fecha_inicio + (fecha_referencia - fecha_base)
-    return min(fecha_programada, jornada.fecha_fin)
-
-
-def fecha_base_por_categoria(categoria):
-    niveles = Jornada.NIVELES_POR_CATEGORIA[categoria]
-    return UnidadMedica.objects.filter(nivel_atencion__in=niveles).aggregate(
-        fecha=Min("fecha_programacion_referencia")
-    )["fecha"]
 
 
 class JornadaViewSet(viewsets.ModelViewSet):
@@ -49,18 +41,13 @@ class JornadaViewSet(viewsets.ModelViewSet):
         jornada = serializer.save()
         niveles_validos = Jornada.NIVELES_POR_CATEGORIA[jornada.categoria]
         unidades = UnidadMedica.objects.filter(nivel_atencion__in=niveles_validos)
-        fecha_base = fecha_base_por_categoria(jornada.categoria)
         ProgramacionVisita.objects.bulk_create(
             [
                 ProgramacionVisita(
                     jornada=jornada,
                     unidad_medica=unidad,
                     ruta_numero=unidad.ruta_programacion,
-                    fecha_distribucion_programada=fecha_programada_inicial(
-                        jornada,
-                        unidad.fecha_programacion_referencia,
-                        fecha_base,
-                    ),
+                    fecha_distribucion_programada=None,
                     tipo_unidad_medica=unidad.tipo_unidad_medica,
                     quien_recibe=unidad.quien_recibe,
                     telefono=unidad.telefono,
@@ -463,6 +450,13 @@ class ProgramacionVisitaViewSet(viewsets.ModelViewSet):
             maximo = _CAMPOS_TEXTO_MASIVO[campo]
             if len(valor_final) > maximo:
                 return Response({"valor": [f"Máximo {maximo} caracteres."]}, status=400)
+            try:
+                if campo == "ruta_numero":
+                    valor_final = validar_ruta_numero(valor_final)
+                elif campo == "telefono":
+                    valor_final = validar_telefono(valor_final)
+            except serializers.ValidationError as exc:
+                return Response({"valor": exc.detail}, status=400)
 
         actualizados = qs.update(**{campo: valor_final})
         return Response({"actualizados": actualizados, "solicitados": len(ids)})

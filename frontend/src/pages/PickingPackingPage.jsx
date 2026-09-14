@@ -5,12 +5,10 @@ import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
 import '../styles/table.css';
 
 const TIPO_LABEL = { ordinaria: 'Ordinaria', extraordinaria: 'Extraordinaria', emergencia: 'Emergencia' };
-const ESTATUS_LABEL = { planeada: 'Planeada', en_curso: 'En curso', cerrada: 'Cerrada', cancelada: 'Cancelada' };
+const ESTATUS_LABEL = { en_proceso: 'EN PROCESO', concluido: 'CONCLUIDO' };
 const ESTATUS_BADGE = {
-  planeada: 'gris',
-  en_curso: 'verde',
-  cerrada: 'dorado',
-  cancelada: 'guinda',
+  en_proceso: 'verde',
+  concluido: 'dorado',
 };
 
 // Mismo listado de distribuciones que /jornadas, pero de solo lectura --

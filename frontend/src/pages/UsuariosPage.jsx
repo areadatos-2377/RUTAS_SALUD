@@ -4,9 +4,9 @@ import { useAuth, ROLES } from '../auth/AuthContext';
 import '../styles/table.css';
 
 const ROL_LABEL = {
-  [ROLES.SUPER_ADMIN]: 'Super administrador',
-  [ROLES.ADMIN_NACIONAL]: 'Administrador nacional',
-  [ROLES.USUARIO_ENTIDAD]: 'Usuario de entidad',
+  [ROLES.SUPER_ADMIN]: 'Administrador',
+  [ROLES.ADMIN_NACIONAL]: 'Nacional',
+  [ROLES.USUARIO_ENTIDAD]: 'Capturista',
   [ROLES.VISOR]: 'Visor (solo Monitoreo y Seguimiento)',
 };
 

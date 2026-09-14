@@ -1,9 +1,24 @@
 from rest_framework import serializers
+from django.utils import timezone
 
 from catalogos.models import Entidad
 from usuarios.models import Usuario
 
 from .models import Jornada, ProgramacionVisita, Ruta
+
+
+def validar_ruta_numero(valor):
+    valor_limpio = (valor or "").strip()
+    if valor_limpio and not valor_limpio.isdigit():
+        raise serializers.ValidationError("La ruta debe contener sólo números.")
+    return valor_limpio
+
+
+def validar_telefono(valor):
+    valor_limpio = (valor or "").strip()
+    if valor_limpio and (not valor_limpio.isdigit() or len(valor_limpio) != 10):
+        raise serializers.ValidationError("El teléfono debe contener exactamente 10 dígitos.")
+    return valor_limpio
 
 
 class JornadaSerializer(serializers.ModelSerializer):
@@ -12,6 +27,7 @@ class JornadaSerializer(serializers.ModelSerializer):
     # se va a perder).
     rutas_count = serializers.SerializerMethodField()
     visitas_count = serializers.SerializerMethodField()
+    estatus = serializers.SerializerMethodField()
 
     class Meta:
         model = Jornada
@@ -29,6 +45,9 @@ class JornadaSerializer(serializers.ModelSerializer):
 
     def get_rutas_count(self, obj):
         return obj.rutas.count()
+
+    def get_estatus(self, obj):
+        return "en_proceso" if timezone.localdate() <= obj.fecha_fin else "concluido"
 
     def get_visitas_count(self, obj):
         # Las unidades se precargan TODAS (miles) al crear la jornada -- contar
@@ -144,3 +163,9 @@ class ProgramacionVisitaSerializer(serializers.ModelSerializer):
                 }
             )
         return attrs
+
+    def validate_ruta_numero(self, valor):
+        return validar_ruta_numero(valor)
+
+    def validate_telefono(self, valor):
+        return validar_telefono(valor)

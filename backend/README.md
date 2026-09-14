@@ -70,4 +70,4 @@ Es **seguro re-ejecutarlo** las veces que haga falta: agrega los CLUES nuevos, a
 - Autenticación de la API (por ahora `SessionAuthentication` vía DRF/cookies; falta decidir si se agrega JWT cuando exista el frontend React, para no depender de cookies same-site).
 - Granularidad del bloqueo de `ProgramacionVisita.bloqueada` a nivel Jornada completa (hoy es por fila) — ver nota en `programacion/models.py`.
 - Backend de almacenamiento de `EvidenciaArchivo.archivo` (object storage vs filesystem) — ver nota en `entregas/models.py` y `blueprint/blueprint-v01.md` sección 9.
-- Ciclo de vida completo de `Jornada.estatus` — los 4 valores actuales son un punto de partida, no una decisión cerrada con el área.
+- `Jornada.estatus` conserva valores históricos en la base; la API muestra `EN PROCESO` hasta el último día del periodo y `CONCLUIDO` desde el día siguiente.
