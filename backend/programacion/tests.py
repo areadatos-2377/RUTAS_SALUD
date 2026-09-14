@@ -215,6 +215,23 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertIs(con_entrega.data["results"][0]["entregado"], True)
 
 	def test_monitoreo_agrega_datos_y_restringe_usuario_entidad(self):
+		jornada_anterior = Jornada.objects.create(
+			nombre="Distribución anterior",
+			tipo=Jornada.TIPO_ORDINARIA,
+			categoria=Jornada.CATEGORIA_PRIMER_NIVEL,
+			fecha_inicio=date(2026, 8, 1),
+			fecha_fin=date(2026, 8, 15),
+		)
+		ProgramacionVisita.objects.create(
+			jornada=jornada_anterior,
+			unidad_medica=self.unidad_colima,
+			fecha_distribucion_programada=date(2026, 8, 5),
+		)
+		ProgramacionVisita.objects.create(
+			jornada=jornada_anterior,
+			unidad_medica=self.unidad_jalisco,
+			fecha_distribucion_programada=date(2026, 8, 6),
+		)
 		respuesta = self.crear_jornada()
 		jornada_id = respuesta.data["id"]
 		fila_colima = ProgramacionVisita.objects.get(
@@ -285,6 +302,7 @@ class PrecargaJornadaTests(APITestCase):
 		fila_evidencia = next(
 			fila for fila in nacional.data["lista_clues"] if fila["clues"] == self.unidad_colima.clues
 		)
+		self.assertEqual(fila_evidencia["entidad_id"], self.colima.id)
 		self.assertIs(fila_evidencia["evidencia_foto"], True)
 		self.assertIs(fila_evidencia["evidencia_video"], False)
 		self.assertIs(fila_evidencia["evidencia_nota"], False)
@@ -325,6 +343,26 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(fecha_compartida["claves"], 8)
 		self.assertEqual(fecha_compartida["piezas_medicamento"], 60)
 		self.assertEqual(fecha_compartida["piezas_material_curacion"], 0)
+		historico = nacional.data["historico_programacion"]
+		self.assertEqual(historico["anterior"]["id"], jornada_anterior.id)
+		self.assertEqual(historico["actual"]["id"], jornada_id)
+		colima_historico = next(
+			fila for fila in historico["entidades"] if fila["entidad"] == "Colima"
+		)
+		self.assertEqual(colima_historico["anterior"], 1)
+		self.assertEqual(colima_historico["actual"], 0)
+		self.assertEqual(colima_historico["diferencia"], -1)
+
+		varias_entidades = self.client.get(
+			f"/api/jornadas/{jornada_id}/monitoreo/"
+			f"?entidad={self.colima.id}&entidad={self.jalisco.id}"
+		)
+		self.assertEqual(varias_entidades.data["resumen"]["registros"], 4)
+		self.assertEqual(len(varias_entidades.data["entidades"]), 2)
+		self.assertEqual(
+			varias_entidades.data["filtros"]["entidades_seleccionadas"],
+			[str(self.colima.id), str(self.jalisco.id)],
+		)
 
 		colima_filtrada = self.client.get(
 			f"/api/jornadas/{jornada_id}/monitoreo/?entidad={self.colima.id}"
@@ -344,6 +382,24 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(entidad.data["resumen"]["atendidas"], 1)
 		self.assertEqual(entidad.data["resumen"]["entidades"], 1)
 		self.assertEqual(entidad.data["entidades"][0]["entidad"], "Colima")
+
+	def test_monitoreo_historico_agrupa_clues_programadas_por_entidad(self):
+		respuesta = self.crear_jornada()
+		ProgramacionVisita.objects.filter(
+			jornada_id=respuesta.data["id"],
+			unidad_medica__in=[self.unidad_jalisco, self.unidad_tardia],
+		).update(fecha_distribucion_programada=date(2026, 9, 10))
+
+		monitoreo = self.client.get(
+			f"/api/jornadas/{respuesta.data['id']}/monitoreo/"
+		)
+
+		jalisco = next(
+			fila
+			for fila in monitoreo.data["historico_programacion"]["entidades"]
+			if fila["entidad"] == "Jalisco"
+		)
+		self.assertEqual(jalisco["actual"], 2)
 
 	def test_fila_precargada_se_puede_editar_y_eliminar(self):
 		respuesta = self.crear_jornada()

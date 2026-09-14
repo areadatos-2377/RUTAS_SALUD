@@ -35,6 +35,19 @@ class PuedeGestionarJornadas(BasePermission):
         return usuario.rol in (Usuario.ROL_ADMIN_NACIONAL, Usuario.ROL_SUPER_ADMIN)
 
 
+class PuedeDescargarChecklistPicking(BasePermission):
+    """Visores y administradores pueden descargar el checklist de picking."""
+
+    def has_permission(self, request, view):
+        usuario = request.user
+        return bool(
+            usuario
+            and usuario.is_authenticated
+            and usuario.rol
+            in (Usuario.ROL_VISOR, Usuario.ROL_ADMIN_NACIONAL, Usuario.ROL_SUPER_ADMIN)
+        )
+
+
 class PuedeEditarCoordinador(BasePermission):
     """Actualizar el coordinador estatal de una entidad: admin_nacional o
     super_admin. Los coordinadores cambian cada cierto tiempo y admin_nacional

@@ -1,7 +1,7 @@
 from django.db import transaction
 from collections import defaultdict
 
-from django.db.models import Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Q
 from django.utils.dateparse import parse_date
 from rest_framework import permissions, serializers, viewsets
 from rest_framework.decorators import action
@@ -79,15 +79,22 @@ class JornadaViewSet(viewsets.ModelViewSet):
             .distinct()
             .order_by("unidad_medica__entidad__nombre")
         )
-        entidad_solicitada = request.query_params.get("entidad")
+        entidades_solicitadas = [
+            entidad_id
+            for entidad_id in request.query_params.getlist("entidad")
+            if entidad_id
+        ]
         visitas = visitas_base
-        if entidad_solicitada:
+        if entidades_solicitadas:
             if (
                 request.user.rol == Usuario.ROL_USUARIO_ENTIDAD
-                and str(request.user.entidad_id) != entidad_solicitada
+                and any(
+                    str(request.user.entidad_id) != entidad_id
+                    for entidad_id in entidades_solicitadas
+                )
             ):
                 return Response({"detail": "No puedes consultar otra entidad."}, status=403)
-            visitas = visitas.filter(unidad_medica__entidad_id=entidad_solicitada)
+            visitas = visitas.filter(unidad_medica__entidad_id__in=entidades_solicitadas)
 
         resumen = {
             "registros": 0,
@@ -192,6 +199,7 @@ class JornadaViewSet(viewsets.ModelViewSet):
                 "id": visita.id,
                 "clues": visita.unidad_medica_id,
                 "unidad": visita.unidad_medica.nombre,
+                "entidad_id": entidad.id,
                 "entidad": entidad.nombre,
                 "municipio": visita.unidad_medica.municipio,
                 "tipo_unidad_medica": visita.tipo_unidad_medica,
@@ -231,8 +239,8 @@ class JornadaViewSet(viewsets.ModelViewSet):
         evidencias_picking = EvidenciaPicking.objects.filter(jornada=jornada)
         if request.user.rol == Usuario.ROL_USUARIO_ENTIDAD:
             evidencias_picking = evidencias_picking.filter(entidad=request.user.entidad)
-        if entidad_solicitada:
-            evidencias_picking = evidencias_picking.filter(entidad_id=entidad_solicitada)
+        if entidades_solicitadas:
+            evidencias_picking = evidencias_picking.filter(entidad_id__in=entidades_solicitadas)
         picking_por_entidad = defaultdict(lambda: {"foto": 0, "video": 0, "fechas": set()})
         picking_por_dia = defaultdict(
             lambda: defaultdict(lambda: {"foto": False, "video": False})
@@ -292,10 +300,59 @@ class JornadaViewSet(viewsets.ModelViewSet):
             for fecha, datos in sorted(por_fecha.items())
         ]
 
+        jornada_anterior = (
+            Jornada.objects.filter(categoria=jornada.categoria)
+            .filter(
+                Q(fecha_inicio__lt=jornada.fecha_inicio)
+                | Q(fecha_inicio=jornada.fecha_inicio, id__lt=jornada.id)
+            )
+            .order_by("-fecha_inicio", "-id")
+            .first()
+        )
+        conteos_actuales = {
+            fila["unidad_medica__entidad_id"]: fila["total"]
+            for fila in visitas.filter(fecha_distribucion_programada__isnull=False)
+            .order_by()
+            .values("unidad_medica__entidad_id")
+            .annotate(total=Count("id"))
+        }
+        conteos_anteriores = {}
+        if jornada_anterior:
+            visitas_anteriores = ProgramacionVisita.objects.filter(
+                jornada=jornada_anterior,
+                fecha_distribucion_programada__isnull=False,
+            )
+            if request.user.rol == Usuario.ROL_USUARIO_ENTIDAD:
+                visitas_anteriores = visitas_anteriores.filter(
+                    unidad_medica__entidad=request.user.entidad
+                )
+            if entidades_solicitadas:
+                visitas_anteriores = visitas_anteriores.filter(
+                    unidad_medica__entidad_id__in=entidades_solicitadas
+                )
+            conteos_anteriores = {
+                fila["unidad_medica__entidad_id"]: fila["total"]
+                for fila in visitas_anteriores.values("unidad_medica__entidad_id")
+                .annotate(total=Count("id"))
+            }
+        entidades_historico = [
+            {
+                "id": entidad_id,
+                "entidad": nombre,
+                "anterior": conteos_anteriores.get(entidad_id, 0),
+                "actual": conteos_actuales.get(entidad_id, 0),
+                "diferencia": (
+                    conteos_actuales.get(entidad_id, 0)
+                    - conteos_anteriores.get(entidad_id, 0)
+                ),
+            }
+            for (entidad_id, nombre) in sorted(por_entidad, key=lambda item: item[1])
+        ]
+
         return Response({
             "jornada": JornadaSerializer(jornada).data,
             "filtros": {
-                "entidad": entidad_solicitada or "",
+                "entidades_seleccionadas": entidades_solicitadas,
                 "entidades": [
                     {
                         "id": item["unidad_medica__entidad_id"],
@@ -307,6 +364,11 @@ class JornadaViewSet(viewsets.ModelViewSet):
             "resumen": resumen,
             "entidades": entidades,
             "fechas": fechas,
+            "historico_programacion": {
+                "anterior": JornadaSerializer(jornada_anterior).data if jornada_anterior else None,
+                "actual": JornadaSerializer(jornada).data,
+                "entidades": entidades_historico,
+            },
             "picking": {
                 "fotos": sum(datos[EvidenciaPicking.TIPO_FOTO] for datos in picking_por_entidad.values()),
                 "videos": sum(datos[EvidenciaPicking.TIPO_VIDEO] for datos in picking_por_entidad.values()),
