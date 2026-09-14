@@ -97,10 +97,12 @@ export default function JornadaDetallePage() {
   const puedeGenerarPresentacion = usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
 
   const [jornada, setJornada] = useState(null);
-  // Distribucion cerrada: ya no se puede editar/eliminar lo capturado
-  // (ProgramacionVisita), solo cargar evidencia -- super_admin es la unica
-  // excepcion (ver Jornada.esta_cerrada_para() en el backend, misma regla).
-  const distribucionCerrada = jornada?.estatus === 'cerrada' && usuario?.rol !== ROLES.SUPER_ADMIN;
+  // Distribucion cerrada (periodo ya paso, fecha_fin < hoy -- el backend
+  // expone esto como estatus "concluido"): ya no se puede editar/eliminar
+  // lo capturado (ProgramacionVisita), solo cargar evidencia -- super_admin
+  // es la unica excepcion (ver Jornada.esta_cerrada_para() en el backend,
+  // misma regla).
+  const distribucionCerrada = jornada?.estatus === 'concluido' && usuario?.rol !== ROLES.SUPER_ADMIN;
   const [entidades, setEntidades] = useState([]);
   const [entidadId, setEntidadId] = useState(
     usuario?.rol === ROLES.USUARIO_ENTIDAD ? String(usuario.entidad) : '',
@@ -427,7 +429,7 @@ export default function JornadaDetallePage() {
               · {jornada.fecha_inicio} al {jornada.fecha_fin}
             </p>
           )}
-          {jornada?.estatus === 'cerrada' && (
+          {jornada?.estatus === 'concluido' && (
             <p className="jornada-meta jornada-meta--cerrada">
               {usuario?.rol === ROLES.SUPER_ADMIN
                 ? 'Esta distribución está cerrada — como super_admin, sigues pudiendo editar y eliminar lo capturado.'
