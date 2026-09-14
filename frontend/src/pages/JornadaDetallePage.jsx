@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileSpreadsheet } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
@@ -119,7 +119,14 @@ export default function JornadaDetallePage() {
   // varias entidades antes de generar una sola presentacion con todo.
   const [fotosSeleccionadas, setFotosSeleccionadas] = useState({});
   const [generandoPresentacion, setGenerandoPresentacion] = useState(false);
+  // Jornadas grandes (cientos de unidades) tardan minutos en generarse --
+  // ver PresentacionJob en el backend. Se muestra avance en vez de solo un
+  // spinner ciego, y se hace polling en vez de esperar un solo POST largo
+  // (eso era lo que reventaba el timeout del servidor antes).
+  const [presentacionEnCurso, setPresentacionEnCurso] = useState(null); // null | { procesadas, total }
   const [autoSeleccionando, setAutoSeleccionando] = useState(false);
+  const montadoRef = useRef(true);
+  useEffect(() => () => { montadoRef.current = false; }, []);
 
   // Filtros por columna estilo Excel: { [campo]: Set<valorMostrado> }. Un
   // campo ausente = sin filtro (se muestran todos los valores de esa
@@ -265,32 +272,55 @@ export default function JornadaDetallePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modoSeleccion, jornada]);
 
+  // Antes esto era un solo POST que esperaba la presentacion terminada y la
+  // bajaba como blob -- con una jornada de cientos de unidades (cientos de
+  // descargas a R2 dentro del mismo request) eso tardaba mas que el timeout
+  // del servidor y tumbaba todo con un 500 (visto en produccion con 595
+  // unidades). Ahora el POST solo lanza un job en el backend y regresa de
+  // inmediato; aqui se hace polling del estado hasta que quede listo (o
+  // truene) y entonces se dispara la descarga real desde la URL firmada de
+  // R2 que regresa el backend.
   async function onGenerarPresentacion() {
     setGenerandoPresentacion(true);
     setError(null);
+    const total = Object.keys(fotosSeleccionadas).length;
+    setPresentacionEnCurso({ procesadas: 0, total });
     try {
       const fotos = Object.entries(fotosSeleccionadas).map(([visitaId, foto]) => ({
         visita_id: Number(visitaId),
         evidencia_id: foto.evidenciaId,
       }));
-      const { blob, nombreArchivo } = await api.postArchivo('/api/entregas/generar-presentacion/', {
+      let job = await api.post('/api/entregas/generar-presentacion/', {
         jornada_id: jornada.id,
         fotos,
       });
-      const url = URL.createObjectURL(blob);
+
+      while (job.estado === 'pendiente' || job.estado === 'procesando') {
+        await new Promise((resolver) => setTimeout(resolver, 1500));
+        if (!montadoRef.current) return;
+        job = await api.get(`/api/entregas/generar-presentacion/${job.id}/estado/`);
+        setPresentacionEnCurso({ procesadas: job.fotos_procesadas, total: job.total_fotos });
+      }
+
+      if (job.estado === 'error') {
+        setError(job.error_mensaje || 'No se pudo generar la presentación.');
+        return;
+      }
+
       const a = document.createElement('a');
-      a.href = url;
-      a.download = nombreArchivo;
+      a.href = job.url_descarga;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
       setFotosSeleccionadas({});
       setModoSeleccion(false);
     } catch {
       setError('No se pudo generar la presentación.');
     } finally {
-      setGenerandoPresentacion(false);
+      if (montadoRef.current) {
+        setGenerandoPresentacion(false);
+        setPresentacionEnCurso(null);
+      }
     }
   }
 
@@ -447,7 +477,11 @@ export default function JornadaDetallePage() {
             )}
             {modoSeleccion && Object.keys(fotosSeleccionadas).length > 0 && (
               <button className="btn-primary" onClick={onGenerarPresentacion} disabled={generandoPresentacion}>
-                {generandoPresentacion ? 'Generando…' : 'Generar presentación'}
+                {generandoPresentacion
+                  ? presentacionEnCurso && presentacionEnCurso.procesadas > 0
+                    ? `Generando… (${presentacionEnCurso.procesadas}/${presentacionEnCurso.total})`
+                    : 'Generando…'
+                  : 'Generar presentación'}
               </button>
             )}
             <button className="btn-ghost" onClick={() => setModoSeleccion((actual) => !actual)}>

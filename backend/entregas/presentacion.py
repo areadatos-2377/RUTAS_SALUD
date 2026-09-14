@@ -16,6 +16,7 @@ XML de una forma no copia sus relaciones.
 
 import io
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from pptx import Presentation
@@ -91,7 +92,58 @@ def _texto_leyenda(forma, nombre_unidad, clues):
     parrafos[0].runs[0].font.size = _tam_fuente_nombre(nombre_unidad)
 
 
-def _llenar_diapositiva_contenido(diapositiva, entidad_nombre, dia_etiqueta, fotos):
+# Cuantas descargas de R2 se hacen en paralelo al armar una presentacion.
+# Secuencial (una por una) es lo que tumbaba el request con jornadas de
+# cientos de unidades -- ver _descargar_imagenes. El cliente de boto3 se
+# comparte entre los hilos (si es seguro, a diferencia de un Resource).
+_HILOS_DESCARGA = 12
+
+
+def _descargar_imagenes(fotos, on_progreso=None):
+    """Baja TODAS las imagenes de fotos en paralelo antes de armar las
+    diapositivas -- construir el .pptx en si (python-pptx) no es seguro
+    entre hilos, pero las descargas de red si se pueden solapar. Regresa un
+    dict {evidencia.id: bytes | None} -- None si esa foto en particular no
+    se pudo traer (se salta al armar la diapositiva, no tumba el resto)."""
+    cliente = storage.crear_cliente()
+    resultado = {}
+    total = len(fotos)
+    procesadas = 0
+
+    def _traer(foto):
+        evidencia = foto["evidencia"]
+        return evidencia.id, storage.descargar_evidencia(evidencia.ruta_almacen, cliente=cliente)
+
+    with ThreadPoolExecutor(max_workers=_HILOS_DESCARGA) as pool:
+        futuros = {pool.submit(_traer, foto): foto for foto in fotos}
+        for futuro in as_completed(futuros):
+            foto = futuros[futuro]
+            evidencia = foto["evidencia"]
+            visita = foto["visita"]
+            try:
+                evidencia_id, bytes_imagen = futuro.result()
+                resultado[evidencia_id] = bytes_imagen
+            except Exception:
+                # Una foto que no se puede traer/insertar (evidencia subida
+                # antes de que WEBP/HEIC se rechazaran en la subida -- ver
+                # storage.EXTENSION_A_TIPO -- un archivo corrupto, o un
+                # timeout puntual de R2) no debe tumbar la presentacion
+                # completa -- se salta esa sola y se deja constancia en los
+                # logs para poder darle seguimiento (ver LOGGING en
+                # settings.py).
+                logger.warning(
+                    "No se pudo descargar la evidencia id=%s (unidad %s) para la presentacion",
+                    evidencia.id, visita.unidad_medica_id, exc_info=True,
+                )
+                resultado[evidencia.id] = None
+            procesadas += 1
+            if on_progreso:
+                on_progreso(procesadas, total)
+
+    return resultado
+
+
+def _llenar_diapositiva_contenido(diapositiva, entidad_nombre, dia_etiqueta, fotos, imagenes_bytes):
     texto_forma(forma_por_id(diapositiva, _ID_TITULO_ENTIDAD), entidad_nombre.title())
     texto_forma(forma_por_id(diapositiva, _ID_DIA_CONTENIDO), dia_etiqueta)
 
@@ -101,36 +153,30 @@ def _llenar_diapositiva_contenido(diapositiva, entidad_nombre, dia_etiqueta, fot
         if i < len(fotos):
             visita = fotos[i]["visita"]
             evidencia = fotos[i]["evidencia"]
-            try:
-                bytes_imagen = storage.descargar_evidencia(evidencia.ruta_almacen)
+            bytes_imagen = imagenes_bytes.get(evidencia.id)
+            if bytes_imagen is not None:
                 left, top, ancho, alto = posicion
                 diapositiva.shapes.add_picture(io.BytesIO(bytes_imagen), left, top, ancho, alto)
                 _texto_leyenda(forma_texto, visita.unidad_medica.nombre, visita.unidad_medica_id)
                 agregada = True
-            except Exception:
-                # Una foto que no se puede insertar (evidencia subida antes
-                # de que WEBP/HEIC se rechazaran en la subida -- ver
-                # storage.EXTENSION_A_TIPO -- o un archivo corrupto) no debe
-                # tumbar la presentacion completa -- se salta esa sola y se
-                # deja constancia en los logs para poder darle seguimiento
-                # (ver LOGGING en settings.py).
-                logger.warning(
-                    "No se pudo insertar la evidencia id=%s (unidad %s) en la presentacion",
-                    evidencia.id, visita.unidad_medica_id, exc_info=True,
-                )
         if not agregada:
             forma_texto._element.getparent().remove(forma_texto._element)
 
 
-def construir_presentacion(dia_texto, categoria_texto, fotos):
+def construir_presentacion(dia_texto, categoria_texto, fotos, on_progreso=None):
     """fotos: lista de {"visita": ProgramacionVisita, "evidencia": EvidenciaArchivo}
     (instancias de modelo reales -- ver views.py, ahi se valida y resuelve
     cada una desde la base antes de llegar aqui). categoria_texto es la
     etiqueta legible de Jornada.categoria (jornada.get_categoria_display()),
     "Primer nivel" o "Segundo y tercer nivel" -- va en el subtitulo de la
     portada, que antes quedaba fijo en "primer nivel" sin importar la
-    categoria real de la distribucion. Regresa un BytesIO listo para mandar
-    como respuesta binaria."""
+    categoria real de la distribucion. on_progreso(procesadas, total), si se
+    pasa, se llama según van llegando las descargas de R2 (ver
+    _descargar_imagenes) -- para reportar avance en jornadas grandes, donde
+    esto puede tardar. Regresa un BytesIO listo para mandar como respuesta
+    binaria."""
+    imagenes_bytes = _descargar_imagenes(fotos, on_progreso=on_progreso)
+
     prs = Presentation(str(RUTA_PLANTILLA))
     diapositiva_portada = prs.slides[0]
     diapositiva_region_base = prs.slides[1]
@@ -169,7 +215,9 @@ def construir_presentacion(dia_texto, categoria_texto, fotos):
             for inicio in range(0, len(fotos_entidad), len(_SLOTS_FOTO)):
                 grupo = fotos_entidad[inicio: inicio + len(_SLOTS_FOTO)]
                 diapositiva_contenido = duplicar_diapositiva(prs, diapositiva_contenido_base)
-                _llenar_diapositiva_contenido(diapositiva_contenido, entidad_nombre, dia_etiqueta, grupo)
+                _llenar_diapositiva_contenido(
+                    diapositiva_contenido, entidad_nombre, dia_etiqueta, grupo, imagenes_bytes
+                )
 
     eliminar_diapositiva(prs, diapositiva_region_base)
     eliminar_diapositiva(prs, diapositiva_contenido_base)
