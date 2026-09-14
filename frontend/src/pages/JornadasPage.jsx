@@ -6,16 +6,14 @@ import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
 import '../styles/table.css';
 
 const TIPO_LABEL = { ordinaria: 'Ordinaria', extraordinaria: 'Extraordinaria', emergencia: 'Emergencia' };
-const ESTATUS_LABEL = { planeada: 'Planeada', en_curso: 'En curso', cerrada: 'Cerrada', cancelada: 'Cancelada' };
+const ESTATUS_LABEL = { en_proceso: 'EN PROCESO', concluido: 'CONCLUIDO' };
 const ESTATUS_BADGE = {
-  planeada: 'gris',
-  en_curso: 'verde',
-  cerrada: 'dorado',
-  cancelada: 'guinda',
+  en_proceso: 'verde',
+  concluido: 'dorado',
 };
 
 const FORM_VACIO = {
-  nombre: '', tipo: 'ordinaria', categoria: 'primer_nivel', fecha_inicio: '', fecha_fin: '', estatus: 'planeada',
+  nombre: '', tipo: 'ordinaria', categoria: 'primer_nivel', fecha_inicio: '', fecha_fin: '',
 };
 
 export default function JornadasPage() {
@@ -48,7 +46,6 @@ export default function JornadasPage() {
       categoria: j.categoria,
       fecha_inicio: j.fecha_inicio,
       fecha_fin: j.fecha_fin,
-      estatus: j.estatus,
     });
     setError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -171,20 +168,6 @@ export default function JornadasPage() {
               required
             />
           </div>
-          {editandoId && (
-            <div className="field">
-              <label htmlFor="estatus">Estatus</label>
-              <select
-                id="estatus"
-                value={formulario.estatus}
-                onChange={(e) => setFormulario({ ...formulario, estatus: e.target.value })}
-              >
-                {Object.entries(ESTATUS_LABEL).map(([valor, etiqueta]) => (
-                  <option key={valor} value={valor}>{etiqueta}</option>
-                ))}
-              </select>
-            </div>
-          )}
           <button className="btn-primary" type="submit" disabled={creando}>
             {creando ? 'Guardando…' : editandoId ? 'Guardar cambios' : '+ Agregar distribución'}
           </button>

@@ -1,4 +1,5 @@
 from datetime import date
+from unittest.mock import patch
 
 from django.db import IntegrityError, transaction
 from rest_framework import status
@@ -118,6 +119,20 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(fila.telefono, "312 123 4567 EXT 8")
 		self.assertEqual(fila.correo, "farmacia@ejemplo.test - almacen@ejemplo.test")
 		self.assertFalse(visitas.exclude(fecha_distribucion_programada=None).exists())
+
+	@patch("programacion.serializers.timezone.localdate", return_value=date(2026, 9, 25))
+	def test_estatus_sigue_en_proceso_el_ultimo_dia_del_periodo(self, _localdate):
+		respuesta = self.crear_jornada()
+
+		self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+		self.assertEqual(respuesta.data["estatus"], "en_proceso")
+
+	@patch("programacion.serializers.timezone.localdate", return_value=date(2026, 9, 26))
+	def test_estatus_se_concluye_despues_del_periodo(self, _localdate):
+		respuesta = self.crear_jornada()
+
+		self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+		self.assertEqual(respuesta.data["estatus"], "concluido")
 
 	def test_precarga_deja_fechas_vacias_si_no_hay_referencias(self):
 		UnidadMedica.objects.filter(nivel_atencion=UnidadMedica.NIVEL_PRIMER).update(

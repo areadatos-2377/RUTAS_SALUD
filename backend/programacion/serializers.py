@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 
 from catalogos.models import Entidad
 from usuarios.models import Usuario
@@ -26,6 +27,7 @@ class JornadaSerializer(serializers.ModelSerializer):
     # se va a perder).
     rutas_count = serializers.SerializerMethodField()
     visitas_count = serializers.SerializerMethodField()
+    estatus = serializers.SerializerMethodField()
 
     class Meta:
         model = Jornada
@@ -43,6 +45,9 @@ class JornadaSerializer(serializers.ModelSerializer):
 
     def get_rutas_count(self, obj):
         return obj.rutas.count()
+
+    def get_estatus(self, obj):
+        return "en_proceso" if timezone.localdate() <= obj.fecha_fin else "concluido"
 
     def get_visitas_count(self, obj):
         # Las unidades se precargan TODAS (miles) al crear la jornada -- contar
