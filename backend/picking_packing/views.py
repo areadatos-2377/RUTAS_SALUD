@@ -9,7 +9,11 @@ from entregas import storage
 from entregas.fechas import formato_fecha_es
 from programacion.models import Jornada
 from usuarios.models import Usuario
-from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
+from usuarios.permissions import (
+    PuedeDescargarChecklistPicking,
+    PuedeGestionarJornadas,
+    PuedeGestionarProgramacion,
+)
 
 from . import checklist, presentacion
 from .models import Evidencia
@@ -162,7 +166,7 @@ class GenerarChecklistView(APIView):
     periodo, cada una con lo que se llevaba subido hasta ahora (ver
     picking_packing/checklist.py)."""
 
-    permission_classes = [permissions.IsAuthenticated, PuedeGestionarJornadas]
+    permission_classes = [permissions.IsAuthenticated, PuedeDescargarChecklistPicking]
 
     def post(self, request):
         try:

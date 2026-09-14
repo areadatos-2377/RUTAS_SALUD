@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Boxes,
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
   Download,
   Film,
   FileSpreadsheet,
@@ -14,16 +15,6 @@ import {
   Search,
   X,
 } from 'lucide-react';
-import {
-  CategoryScale,
-  Chart as ChartJS,
-  Filler,
-  LinearScale,
-  LineElement,
-  PointElement,
-  Tooltip,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
 import { api, ApiError } from '../api/client';
 import { ROLES, useAuth } from '../auth/AuthContext';
 import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
@@ -33,20 +24,11 @@ import '../styles/table.css';
 import './MonitoreoPage.css';
 
 const FORMATO_NUMERO = new Intl.NumberFormat('es-MX');
-const METRICAS_FECHA = [
-  { clave: 'clues', etiqueta: 'CLUES' },
-  { clave: 'rutas', etiqueta: 'Rutas' },
-  { clave: 'claves', etiqueta: 'Claves a desplazar' },
-  { clave: 'piezas_medicamento', etiqueta: 'Piezas de medicamento' },
-  { clave: 'piezas_material_curacion', etiqueta: 'Piezas de mat. curación' },
-];
 const NIVELES = [
   { valor: 'primer_nivel', etiqueta: 'Primer nivel' },
   { valor: 'segundo_tercer_nivel', etiqueta: 'Segundo y tercer nivel' },
 ];
 const DIA_SEMANA_CORTO = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
 function numero(valor) {
   return FORMATO_NUMERO.format(valor || 0);
@@ -54,11 +36,6 @@ function numero(valor) {
 
 function sumar(filas, campo) {
   return filas.reduce((total, fila) => total + Number(fila[campo] || 0), 0);
-}
-
-function fechaCorta(valor) {
-  return new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: '2-digit', year: '2-digit' })
-    .format(new Date(`${valor}T12:00:00`));
 }
 
 function rangoDias(inicio, fin) {
@@ -103,9 +80,9 @@ function Kpi({ icono, etiqueta, valor, detalle, tono }) {
   );
 }
 
-function Apartado({ numeroOrden, titulo, detalle, abierto, onAlternar, children }) {
+function Apartado({ numeroOrden, titulo, detalle, abierto, onAlternar, apartadoRef, children }) {
   return (
-    <details className="monitor-apartado" open={abierto}>
+    <details ref={apartadoRef} className="monitor-apartado" open={abierto}>
       <summary onClick={(evento) => { evento.preventDefault(); onAlternar(); }}>
         <span className="monitor-apartado__numero">{numeroOrden}</span>
         <span className="monitor-apartado__titulo">{titulo}</span>
@@ -148,6 +125,79 @@ function DescargarTabla({ onDescargar }) {
   );
 }
 
+function FiltroEntidades({ opciones, seleccionadas, onAplicar, disabled }) {
+  const detallesRef = useRef(null);
+  const [borrador, setBorrador] = useState([]);
+  const todosLosIds = opciones.map((opcion) => String(opcion.id));
+  const seleccionEfectiva = seleccionadas.length > 0 ? seleccionadas : todosLosIds;
+  const todosSeleccionados = opciones.length > 0 && borrador.length === opciones.length;
+  const etiqueta = seleccionadas.length === 0
+    ? 'Todos los estados'
+    : `${seleccionadas.length} estado${seleccionadas.length === 1 ? '' : 's'}`;
+
+  function alAlternar(evento) {
+    if (evento.currentTarget.open) setBorrador(seleccionEfectiva);
+  }
+
+  function alternarEntidad(entidadId, seleccionada) {
+    setBorrador((actual) => (
+      seleccionada
+        ? [...actual, entidadId]
+        : actual.filter((id) => id !== entidadId)
+    ));
+  }
+
+  function cerrar() {
+    detallesRef.current?.removeAttribute('open');
+  }
+
+  function aplicar() {
+    onAplicar(todosSeleccionados ? [] : borrador);
+    cerrar();
+  }
+
+  return (
+    <div className="field monitor-multiselect">
+      <span className="monitor-multiselect__label">Estado</span>
+      <details ref={detallesRef} onToggle={alAlternar}>
+        <summary
+          aria-label={`Filtrar por estado: ${etiqueta}`}
+          onClick={(evento) => { if (disabled) evento.preventDefault(); }}
+          aria-disabled={disabled}
+        >
+          <span>{etiqueta}</span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </summary>
+        <div className="monitor-multiselect__menu">
+          <div className="monitor-multiselect__atajos">
+            <button type="button" onClick={() => setBorrador(todosLosIds)}>Seleccionar todo</button>
+            <button type="button" onClick={() => setBorrador([])}>Limpiar</button>
+          </div>
+          <div className="monitor-multiselect__opciones">
+            {opciones.map((opcion) => {
+              const entidadId = String(opcion.id);
+              return (
+                <label key={entidadId} className="monitor-multiselect__opcion">
+                  <input
+                    type="checkbox"
+                    checked={borrador.includes(entidadId)}
+                    onChange={(evento) => alternarEntidad(entidadId, evento.target.checked)}
+                  />
+                  <span>{opcion.nombre}</span>
+                </label>
+              );
+            })}
+          </div>
+          <div className="monitor-multiselect__acciones">
+            <button type="button" className="btn-ghost" onClick={cerrar}>Cancelar</button>
+            <button type="button" className="btn-primary" onClick={aplicar} disabled={borrador.length === 0}>Aplicar</button>
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function MarcaEvidencia({ presente, etiqueta, onAbrir }) {
   if (presente && onAbrir) {
     return (
@@ -175,15 +225,17 @@ export default function MonitoreoPage() {
   const [jornadas, setJornadas] = useState(null);
   const [nivel, setNivel] = useState('primer_nivel');
   const [jornadaId, setJornadaId] = useState('');
-  const [entidadId, setEntidadId] = useState('');
+  const [entidadesSeleccionadas, setEntidadesSeleccionadas] = useState([]);
+  const [entidadesDisponibles, setEntidadesDisponibles] = useState([]);
   const [datos, setDatos] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+  const [filtroLista, setFiltroLista] = useState(null);
   const [busquedaEvidencia, setBusquedaEvidencia] = useState('');
-  const [metricaFecha, setMetricaFecha] = useState('rutas');
   const [apartadoAbierto, setApartadoAbierto] = useState('01');
   const [generandoChecklist, setGenerandoChecklist] = useState(false);
   const [vistaRapida, setVistaRapida] = useState(null);
   const [error, setError] = useState(null);
+  const listaCluesRef = useRef(null);
 
   useEffect(() => {
     api.getAll('/api/jornadas/')
@@ -200,16 +252,21 @@ export default function MonitoreoPage() {
   useEffect(() => {
     if (!jornadaId) return;
     let cancelado = false;
-    const params = entidadId ? `?entidad=${entidadId}` : '';
-    api.get(`/api/jornadas/${jornadaId}/monitoreo/${params}`)
+    const params = new URLSearchParams();
+    entidadesSeleccionadas.forEach((entidadId) => params.append('entidad', entidadId));
+    const consulta = params.size > 0 ? `?${params.toString()}` : '';
+    api.get(`/api/jornadas/${jornadaId}/monitoreo/${consulta}`)
       .then((respuesta) => {
-        if (!cancelado) setDatos(respuesta);
+        if (!cancelado) {
+          setDatos(respuesta);
+          setEntidadesDisponibles(respuesta.filtros.entidades);
+        }
       })
       .catch(() => {
         if (!cancelado) setError('No se pudo cargar el monitoreo de esta distribución.');
       });
     return () => { cancelado = true; };
-  }, [jornadaId, entidadId]);
+  }, [jornadaId, entidadesSeleccionadas]);
 
   const jornadasDelNivel = (jornadas || []).filter((item) => item.categoria === nivel);
 
@@ -217,6 +274,7 @@ export default function MonitoreoPage() {
     setDatos(null);
     setError(null);
     setBusqueda('');
+    setFiltroLista(null);
     setBusquedaEvidencia('');
   }
 
@@ -224,19 +282,21 @@ export default function MonitoreoPage() {
     const primera = (jornadas || []).find((item) => item.categoria === nuevoNivel);
     prepararRecarga();
     setNivel(nuevoNivel);
-    setEntidadId('');
+    setEntidadesSeleccionadas([]);
+    setEntidadesDisponibles([]);
     setJornadaId(primera ? String(primera.id) : '');
   }
 
   function onCambiarJornada(nuevoId) {
     prepararRecarga();
-    setEntidadId('');
+    setEntidadesSeleccionadas([]);
+    setEntidadesDisponibles([]);
     setJornadaId(nuevoId);
   }
 
-  function onCambiarEntidad(nuevoId) {
+  function onCambiarEntidades(nuevosIds) {
     prepararRecarga();
-    setEntidadId(nuevoId);
+    setEntidadesSeleccionadas(nuevosIds);
   }
 
   function abrirEvidencia(fila, categoria) {
@@ -254,7 +314,24 @@ export default function MonitoreoPage() {
     setApartadoAbierto((actual) => (actual === numeroOrden ? null : numeroOrden));
   }
 
+  function mostrarClues(filaEntidad, tipo, etiqueta) {
+    setFiltroLista({
+      entidadId: String(filaEntidad.id),
+      tipo,
+      etiqueta: `${etiqueta} · ${filaEntidad.entidad}`,
+    });
+    setBusqueda('');
+    setApartadoAbierto('03');
+    requestAnimationFrame(() => {
+      listaCluesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   const listaFiltrada = (datos?.lista_clues || []).filter((fila) => {
+    if (filtroLista && String(fila.entidad_id) !== filtroLista.entidadId) return false;
+    if (filtroLista?.tipo === 'abastecidas' && !fila.entregado) return false;
+    if (filtroLista?.tipo === 'pendientes' && fila.entregado) return false;
+    if (filtroLista?.tipo === 'por_programar' && fila.fecha_programada) return false;
     const texto = `${fila.clues} ${fila.unidad} ${fila.entidad} ${fila.municipio} ${fila.ruta} ${fila.tipo_unidad_medica} ${fila.quien_recibe} ${fila.telefono} ${fila.correo}`.toLocaleLowerCase('es');
     return texto.includes(busqueda.trim().toLocaleLowerCase('es'));
   });
@@ -264,51 +341,9 @@ export default function MonitoreoPage() {
   });
   const resumen = datos?.resumen;
   const esVisor = usuario?.rol === ROLES.VISOR;
-  const puedeDescargarChecklist = usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
+  const puedeDescargarChecklist = esVisor || usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
   const diasPicking = datos ? rangoDias(datos.jornada.fecha_inicio, datos.jornada.fecha_fin) : [];
-  const opcionMetrica = METRICAS_FECHA.find((opcion) => opcion.clave === metricaFecha);
-  const datosGrafica = {
-    labels: (datos?.fechas || []).map((fila) => fechaCorta(fila.fecha)),
-    datasets: [{
-      label: opcionMetrica.etiqueta,
-      data: (datos?.fechas || []).map((fila) => fila[metricaFecha]),
-      borderColor: '#1f5b4d',
-      backgroundColor: 'rgba(31, 91, 77, 0.20)',
-      borderWidth: 2.5,
-      pointBackgroundColor: '#1f5b4d',
-      pointBorderWidth: 0,
-      pointRadius: 3,
-      pointHoverRadius: 5,
-      fill: true,
-      tension: 0.28,
-    }],
-  };
-  const opcionesGrafica = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { intersect: false, mode: 'index' },
-    plugins: {
-      tooltip: {
-        displayColors: false,
-        callbacks: {
-          label: (contexto) => `${opcionMetrica.etiqueta}: ${numero(contexto.parsed.y)}`,
-        },
-      },
-    },
-    scales: {
-      x: {
-        title: { display: true, text: 'Fecha', color: '#5f6562', font: { size: 11, weight: 600 } },
-        grid: { color: 'rgba(32, 47, 43, 0.08)' },
-        ticks: { color: '#666d69', maxRotation: 0, autoSkip: true, maxTicksLimit: 18, font: { size: 9 } },
-      },
-      y: {
-        beginAtZero: true,
-        title: { display: true, text: 'Totales', color: '#5f6562', font: { size: 11, weight: 600 } },
-        grid: { color: 'rgba(32, 47, 43, 0.10)' },
-        ticks: { color: '#666d69', precision: 0, font: { size: 10 } },
-      },
-    },
-  };
+  const historico = datos?.historico_programacion;
 
   async function onGenerarChecklist() {
     setGenerandoChecklist(true);
@@ -327,14 +362,19 @@ export default function MonitoreoPage() {
   }
 
   async function onDescargarTabla(apartado, formato) {
-    const contexto = entidadId
-      ? datos.filtros.entidades.find((entidad) => String(entidad.id) === entidadId)?.nombre
+    const contexto = entidadesSeleccionadas.length > 0
+      ? entidadesDisponibles
+        .filter((entidad) => entidadesSeleccionadas.includes(String(entidad.id)))
+        .map((entidad) => entidad.nombre)
+        .join(', ')
       : 'Todos los estados';
     const base = `${datos.jornada.nombre} - ${contexto}`;
     const subtitulo = `${datos.jornada.nombre} · ${contexto}`.toLocaleUpperCase('es');
+    const nivelAtencion = (CATEGORIA_LABEL[datos.jornada.categoria] || datos.jornada.categoria)
+      .toLocaleUpperCase('es');
     const configuraciones = {
       programada: {
-        titulo: 'DISTRIBUCIÓN PROGRAMADA VS ABASTECIDA',
+        titulo: `ABASTECIMIENTO DE MEDICAMENTO Y MATERIAL DE CURACIÓN A UNIDADES MÉDICAS DE ${nivelAtencion} DE ATENCIÓN`,
         subtitulo,
         nombreArchivo: `distribucion_programada_vs_abastecida_${base}`,
         filas: datos.entidades,
@@ -465,15 +505,12 @@ export default function MonitoreoPage() {
             ))}
           </select>
         </div>
-        <div className="field">
-          <label htmlFor="monitor-entidad">Estado</label>
-          <select id="monitor-entidad" value={entidadId} onChange={(e) => onCambiarEntidad(e.target.value)} disabled={!datos}>
-            <option value="">Todos los estados</option>
-            {datos?.filtros.entidades.map((entidad) => (
-              <option key={entidad.id} value={entidad.id}>{entidad.nombre}</option>
-            ))}
-          </select>
-        </div>
+        <FiltroEntidades
+          opciones={entidadesDisponibles}
+          seleccionadas={entidadesSeleccionadas}
+          onAplicar={onCambiarEntidades}
+          disabled={!datos}
+        />
         {datos && (
           <div className="monitor-filtros__contexto">
             <span className={`badge ${datos.jornada.categoria === 'primer_nivel' ? 'verde' : 'dorado'}`}>
@@ -494,19 +531,58 @@ export default function MonitoreoPage() {
             <Apartado numeroOrden="01" titulo="DISTRIBUCIÓN PROGRAMADA VS ABASTECIDA" detalle={`${resumen.avance_porcentaje}% de avance`} abierto={apartadoAbierto === '01'} onAlternar={() => alternarApartado('01')}>
               <div className="monitor-tabla-acciones"><DescargarTabla onDescargar={(formato) => onDescargarTabla('programada', formato)} /></div>
               <div className="tablewrap monitor-tabla-resumen"><table><thead><tr><th>Entidad</th><th>Total de unidades médicas programadas</th><th>Total de unidades médicas abastecidas</th><th>Avance general</th></tr></thead><tbody>
-                {datos.entidades.map((fila) => <tr key={fila.id}><td className="nombre">{fila.entidad}</td><td className="monitor-dato--verde">{numero(fila.registros)}</td><td>{fila.atendidas ? numero(fila.atendidas) : '—'}</td><td>{fila.atendidas ? <span className="monitor-porcentaje"><i style={{ width: `${fila.avance_porcentaje}%` }} />{fila.avance_porcentaje}%</span> : '—'}</td></tr>)}
+                {datos.entidades.map((fila) => (
+                  <tr key={fila.id}>
+                    <td className="nombre">{fila.entidad}</td>
+                    <td className="monitor-dato--verde">
+                      <button type="button" className="monitor-conteo-link" aria-label={`Ver ${fila.registros} CLUES programadas de ${fila.entidad}`} onClick={() => mostrarClues(fila, 'programadas', 'CLUES programadas')}>
+                        {numero(fila.registros)}
+                      </button>
+                    </td>
+                    <td>{fila.atendidas ? (
+                      <button type="button" className="monitor-conteo-link" aria-label={`Ver ${fila.atendidas} CLUES abastecidas de ${fila.entidad}`} onClick={() => mostrarClues(fila, 'abastecidas', 'CLUES abastecidas')}>
+                        {numero(fila.atendidas)}
+                      </button>
+                    ) : '—'}</td>
+                    <td>{fila.atendidas ? (
+                      <button type="button" className="monitor-conteo-link monitor-conteo-link--porcentaje" aria-label={`Ver las CLUES que conforman el ${fila.avance_porcentaje}% de avance de ${fila.entidad}`} onClick={() => mostrarClues(fila, 'abastecidas', 'CLUES abastecidas')}>
+                        <span className="monitor-porcentaje"><i style={{ width: `${fila.avance_porcentaje}%` }} />{fila.avance_porcentaje}%</span>
+                      </button>
+                    ) : '—'}</td>
+                  </tr>
+                ))}
               </tbody></table></div>
             </Apartado>
 
             <Apartado numeroOrden="02" titulo="CLUES QUE FALTAN POR ABASTECER" detalle={`${numero(resumen.pendientes)} pendientes`} abierto={apartadoAbierto === '02'} onAlternar={() => alternarApartado('02')}>
               <div className="monitor-tabla-acciones"><DescargarTabla onDescargar={(formato) => onDescargarTabla('pendientes', formato)} /></div>
               <div className="tablewrap monitor-tabla-resumen"><table><thead><tr><th>Estado</th><th>CLUES que faltan por abastecer</th><th>CLUES por programar</th></tr></thead><tbody>
-                {datos.entidades.map((fila) => <tr key={fila.id}><td className="nombre">{fila.entidad}</td><td className={fila.pendientes ? 'monitor-dato--rojo' : ''}>{fila.pendientes ? numero(fila.pendientes) : '—'}</td><td className={fila.por_programar ? 'monitor-dato--rojo' : ''}>{fila.por_programar ? numero(fila.por_programar) : '—'}</td></tr>)}
+                {datos.entidades.map((fila) => (
+                  <tr key={fila.id}>
+                    <td className="nombre">{fila.entidad}</td>
+                    <td className={fila.pendientes ? 'monitor-dato--rojo' : ''}>{fila.pendientes ? (
+                      <button type="button" className="monitor-conteo-link" aria-label={`Ver ${fila.pendientes} CLUES pendientes de abastecer de ${fila.entidad}`} onClick={() => mostrarClues(fila, 'pendientes', 'CLUES pendientes de abastecer')}>
+                        {numero(fila.pendientes)}
+                      </button>
+                    ) : '—'}</td>
+                    <td className={fila.por_programar ? 'monitor-dato--rojo' : ''}>{fila.por_programar ? (
+                      <button type="button" className="monitor-conteo-link" aria-label={`Ver ${fila.por_programar} CLUES por programar de ${fila.entidad}`} onClick={() => mostrarClues(fila, 'por_programar', 'CLUES por programar')}>
+                        {numero(fila.por_programar)}
+                      </button>
+                    ) : '—'}</td>
+                  </tr>
+                ))}
               </tbody></table></div>
             </Apartado>
 
-            <Apartado numeroOrden="03" titulo="LISTA DE CLUES" detalle={`${numero(resumen.registros)} registros`} abierto={apartadoAbierto === '03'} onAlternar={() => alternarApartado('03')}>
+            <Apartado apartadoRef={listaCluesRef} numeroOrden="03" titulo="LISTA DE CLUES" detalle={filtroLista ? `${numero(listaFiltrada.length)} resultado${listaFiltrada.length === 1 ? '' : 's'}` : `${numero(resumen.registros)} registros`} abierto={apartadoAbierto === '03'} onAlternar={() => alternarApartado('03')}>
               <div className="monitor-tabla-herramientas">
+                {filtroLista && (
+                  <span className="monitor-lista-filtro">
+                    {filtroLista.etiqueta}
+                    <button type="button" aria-label="Quitar filtro de conteo" onClick={() => setFiltroLista(null)}><X size={14} aria-hidden="true" /></button>
+                  </span>
+                )}
                 <label className="monitor-busqueda"><Search size={16} aria-hidden="true" /><input type="search" placeholder="Buscar CLUES, unidad, contacto, teléfono o correo" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></label>
                 <DescargarTabla onDescargar={(formato) => onDescargarTabla('lista', formato)} />
               </div>
@@ -516,19 +592,36 @@ export default function MonitoreoPage() {
               </tbody></table></div>
             </Apartado>
 
-            <Apartado numeroOrden="04" titulo="HISTÓRICO DE PROGRAMACIÓN" detalle={`${datos.fechas.length} fechas`} abierto={apartadoAbierto === '04'} onAlternar={() => alternarApartado('04')}>
-              <div className="monitor-grafica__modos" role="group" aria-label="Dato mostrado por fecha">
-                {METRICAS_FECHA.map((opcion) => (
-                  <button key={opcion.clave} type="button" className={metricaFecha === opcion.clave ? 'activo' : ''} aria-pressed={metricaFecha === opcion.clave} onClick={() => setMetricaFecha(opcion.clave)}>
-                    {opcion.etiqueta}
-                  </button>
-                ))}
+            <Apartado numeroOrden="04" titulo="HISTÓRICO DE PROGRAMACIÓN" detalle={`${historico.entidades.length} estados`} abierto={apartadoAbierto === '04'} onAlternar={() => alternarApartado('04')}>
+              <div className="tablewrap monitor-tabla-resumen monitor-tabla-historico">
+                <table>
+                  <thead><tr>
+                    <th>Entidad</th>
+                    <th>
+                      {historico.anterior?.nombre || 'Sin distribución anterior'}
+                      {historico.anterior && <small>{historico.anterior.fecha_inicio} al {historico.anterior.fecha_fin}</small>}
+                    </th>
+                    <th>
+                      {historico.actual.nombre} (actual)
+                      <small>{historico.actual.fecha_inicio} al {historico.actual.fecha_fin}</small>
+                    </th>
+                    <th>Diferencia (actual vs. anterior)</th>
+                  </tr></thead>
+                  <tbody>
+                    {historico.entidades.map((fila) => (
+                      <tr key={fila.id}>
+                        <td className="nombre">{fila.entidad}</td>
+                        <td>{historico.anterior ? numero(fila.anterior) : '—'}</td>
+                        <td>{numero(fila.actual)}</td>
+                        <td className={`monitor-historico__diferencia ${fila.diferencia < 0 ? 'negativa' : fila.diferencia > 0 ? 'positiva' : ''}`}>
+                          {historico.anterior ? `${fila.diferencia > 0 ? '+' : ''}${numero(fila.diferencia)}` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                    {historico.entidades.length === 0 && <tr><td colSpan={4} className="tabla-vacia">No hay estados para comparar.</td></tr>}
+                  </tbody>
+                </table>
               </div>
-              {datos.fechas.length > 0 ? (
-                <div className="monitor-grafica" role="img" aria-label={`${opcionMetrica.etiqueta} por fecha`}>
-                  <Line data={datosGrafica} options={opcionesGrafica} />
-                </div>
-              ) : <p className="tabla-vacia">No hay fechas programadas.</p>}
             </Apartado>
 
             <Apartado numeroOrden="05" titulo="AVANCE PICKING Y PACKING" detalle={`${datos.picking.dias_evidencia} días con evidencia`} abierto={apartadoAbierto === '05'} onAlternar={() => alternarApartado('05')}>
