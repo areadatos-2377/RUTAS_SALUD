@@ -86,9 +86,10 @@ export default function Shell() {
               <NavLink to="/jornadas" className="nav-item">
                 {ICONOS.jornadas} Distribuciones
               </NavLink>
-              <NavLink to="/evidencia" className="nav-item">
-                {ICONOS.evidencia} Evidencia
-              </NavLink>
+              {/* Pestana "Evidencia" oculta para todos los roles (a peticion
+                  del usuario) -- la ruta /evidencia sigue registrada en
+                  App.jsx pero bloqueada con RequireRole roles={[]}, para
+                  poder reactivarla facil si hace falta mas adelante. */}
             </>
           )}
           {(usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN) && (

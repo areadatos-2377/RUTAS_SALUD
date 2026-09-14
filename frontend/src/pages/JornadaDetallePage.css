@@ -6,6 +6,10 @@
   align-items: center;
   gap: 6px;
 }
+.jornada-meta--cerrada {
+  color: var(--guinda);
+  font-weight: 700;
+}
 
 .jornada-topbar {
   align-items: flex-start;

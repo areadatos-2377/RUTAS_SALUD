@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from catalogos.models import Entidad, UnidadMedica
+from usuarios.models import Usuario
 
 
 class Jornada(models.Model):
@@ -64,6 +65,14 @@ class Jornada(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.get_tipo_display()})"
+
+    def esta_cerrada_para(self, usuario):
+        """Una distribucion cerrada ya no admite editar/eliminar lo
+        capturado (ProgramacionVisita) -- solo la carga de evidencia (en
+        entregas/) sigue abierta, y eso no pasa por aqui. super_admin es la
+        unica excepcion, para poder corregir algo despues de cerrada si
+        hace falta."""
+        return self.estatus == self.ESTATUS_CERRADA and usuario.rol != Usuario.ROL_SUPER_ADMIN
 
 
 class Ruta(models.Model):

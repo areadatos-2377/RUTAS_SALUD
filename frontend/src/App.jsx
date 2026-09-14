@@ -80,10 +80,13 @@ export default function App() {
               </RequireRole>
             }
           />
+          {/* Oculta para todos los roles a peticion del usuario -- roles={[]}
+              bloquea a cualquiera (incluido super_admin), sin quitar la
+              ruta ni el componente, para poder reactivarla facil despues. */}
           <Route
             path="evidencia"
             element={
-              <RequireRole roles={ROLES_NO_VISOR}>
+              <RequireRole roles={[]}>
                 <EvidenciaListaPage />
               </RequireRole>
             }
