@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   Download,
   Film,
+  FileSpreadsheet,
+  FileText,
   Image,
   ListChecks,
   PackageCheck,
@@ -25,6 +27,7 @@ import { Line } from 'react-chartjs-2';
 import { api, ApiError } from '../api/client';
 import { ROLES, useAuth } from '../auth/AuthContext';
 import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
+import { exportarTablaExcel, exportarTablaPdf } from '../utils/exportarTabla';
 import EvidenciaVistaRapida from './EvidenciaVistaRapida';
 import '../styles/table.css';
 import './MonitoreoPage.css';
@@ -47,6 +50,10 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, 
 
 function numero(valor) {
   return FORMATO_NUMERO.format(valor || 0);
+}
+
+function sumar(filas, campo) {
+  return filas.reduce((total, fila) => total + Number(fila[campo] || 0), 0);
 }
 
 function fechaCorta(valor) {
@@ -110,19 +117,34 @@ function Apartado({ numeroOrden, titulo, detalle, abierto, onAlternar, children 
   );
 }
 
-function EstadoEntrega({ fila }) {
-  if (fila.entregado) return <span className="monitor-estado monitor-estado--completo">Abastecida</span>;
-  if (!fila.fecha_programada) return <span className="monitor-estado monitor-estado--pendiente">Por programar</span>;
-  if (fila.tiene_evidencia) return <span className="monitor-estado monitor-estado--alerta">Evidencia sin entrega</span>;
-  return <span className="monitor-estado monitor-estado--pendiente">Pendiente</span>;
-}
+function DescargarTabla({ onDescargar }) {
+  const [generando, setGenerando] = useState(null);
 
-function CantidadPorcentaje({ cantidad, porcentaje, tono }) {
+  async function descargar(formato, evento) {
+    evento.currentTarget.closest('details').removeAttribute('open');
+    setGenerando(formato);
+    try {
+      await onDescargar(formato);
+    } finally {
+      setGenerando(null);
+    }
+  }
+
   return (
-    <span className={`monitor-cantidad monitor-cantidad--${tono}`}>
-      <strong>{numero(cantidad)}</strong>
-      <small>{porcentaje}%</small>
-    </span>
+    <details className="monitor-descarga">
+      <summary aria-label="Descargar tabla">
+        <Download size={15} aria-hidden="true" />
+        {generando ? 'Generando…' : 'Descargar'}
+      </summary>
+      <div className="monitor-descarga__menu">
+        <button type="button" onClick={(evento) => descargar('excel', evento)} disabled={Boolean(generando)}>
+          <FileSpreadsheet size={15} aria-hidden="true" /> Excel
+        </button>
+        <button type="button" onClick={(evento) => descargar('pdf', evento)} disabled={Boolean(generando)}>
+          <FileText size={15} aria-hidden="true" /> PDF
+        </button>
+      </div>
+    </details>
   );
 }
 
@@ -241,6 +263,7 @@ export default function MonitoreoPage() {
     return texto.includes(busquedaEvidencia.trim().toLocaleLowerCase('es'));
   });
   const resumen = datos?.resumen;
+  const esVisor = usuario?.rol === ROLES.VISOR;
   const puedeDescargarChecklist = usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
   const diasPicking = datos ? rangoDias(datos.jornada.fecha_inicio, datos.jornada.fecha_fin) : [];
   const opcionMetrica = METRICAS_FECHA.find((opcion) => opcion.clave === metricaFecha);
@@ -303,6 +326,106 @@ export default function MonitoreoPage() {
     }
   }
 
+  async function onDescargarTabla(apartado, formato) {
+    const contexto = entidadId
+      ? datos.filtros.entidades.find((entidad) => String(entidad.id) === entidadId)?.nombre
+      : 'Todos los estados';
+    const base = `${datos.jornada.nombre} - ${contexto}`;
+    const subtitulo = `${datos.jornada.nombre} · ${contexto}`.toLocaleUpperCase('es');
+    const configuraciones = {
+      programada: {
+        titulo: 'DISTRIBUCIÓN PROGRAMADA VS ABASTECIDA',
+        subtitulo,
+        nombreArchivo: `distribucion_programada_vs_abastecida_${base}`,
+        filas: datos.entidades,
+        columnas: [
+          { etiqueta: 'ENTIDAD', valor: 'entidad', ancho: 30, tipo: 'texto' },
+          { etiqueta: 'TOTAL DE UNIDADES MÉDICAS PROGRAMADAS', valor: 'registros', ancho: 24, tipo: 'numero' },
+          { etiqueta: 'TOTAL DE UNIDADES MÉDICAS ABASTECIDAS', valor: (fila) => fila.atendidas || '--', ancho: 24, tipo: 'numero' },
+          { etiqueta: 'AVANCE GENERAL', valor: (fila) => fila.atendidas ? `${fila.avance_porcentaje}%` : '--', ancho: 16, tipo: 'porcentaje' },
+        ],
+        totales: { registros: resumen.registros, atendidas: resumen.atendidas, avance_porcentaje: resumen.avance_porcentaje },
+      },
+      pendientes: {
+        titulo: 'CLUES QUE FALTAN POR ABASTECER',
+        subtitulo,
+        nombreArchivo: `clues_faltantes_por_abastecer_${base}`,
+        filas: datos.entidades,
+        columnas: [
+          { etiqueta: 'ESTADO', valor: 'entidad', ancho: 30, tipo: 'texto' },
+          { etiqueta: 'CLUES QUE FALTAN POR ABASTECER', valor: (fila) => fila.pendientes || '--', ancho: 25, tipo: 'numero' },
+          { etiqueta: 'CLUES POR PROGRAMAR', valor: (fila) => fila.por_programar || '--', ancho: 22, tipo: 'numero' },
+        ],
+        totales: { pendientes: resumen.pendientes, por_programar: sumar(datos.entidades, 'por_programar') },
+      },
+      lista: {
+        titulo: 'LISTA DE CLUES',
+        subtitulo,
+        nombreArchivo: `lista_de_clues_${base}`,
+        filas: listaFiltrada,
+        columnas: [
+          { etiqueta: 'CLUES', valor: 'clues', ancho: 18, tipo: 'texto' },
+          { etiqueta: 'UNIDAD MÉDICA', valor: 'unidad', ancho: 42, tipo: 'texto' },
+          { etiqueta: 'TIPO DE UNIDAD', valor: (fila) => fila.tipo_unidad_medica || '—', ancho: 24, tipo: 'texto' },
+          { etiqueta: 'ESTADO', valor: 'entidad', ancho: 24, tipo: 'texto' },
+          { etiqueta: 'MUNICIPIO', valor: (fila) => fila.municipio || '—', ancho: 24, tipo: 'texto' },
+          { etiqueta: 'RUTA', valor: (fila) => fila.ruta || '—', ancho: 12, tipo: 'texto' },
+          { etiqueta: 'FECHA PROGRAMADA', valor: (fila) => fila.fecha_programada || 'Por programar', ancho: 18, tipo: 'texto' },
+          { etiqueta: 'CLAVES', valor: 'claves', ancho: 12, tipo: 'numero' },
+          { etiqueta: 'MEDICAMENTO', valor: 'piezas_medicamento', ancho: 15, tipo: 'numero' },
+          { etiqueta: 'MATERIAL CURACIÓN', valor: 'piezas_material_curacion', ancho: 17, tipo: 'numero' },
+          { etiqueta: 'QUIÉN RECIBE EN UNIDAD', valor: (fila) => fila.quien_recibe || '—', ancho: 35, tipo: 'texto' },
+          { etiqueta: 'TELÉFONO', valor: (fila) => fila.telefono || '—', ancho: 22, tipo: 'texto' },
+          { etiqueta: 'CORREO', valor: (fila) => fila.correo || '—', ancho: 32, tipo: 'texto' },
+        ],
+        totales: {
+          claves: sumar(listaFiltrada, 'claves'),
+          piezas_medicamento: sumar(listaFiltrada, 'piezas_medicamento'),
+          piezas_material_curacion: sumar(listaFiltrada, 'piezas_material_curacion'),
+        },
+      },
+      evidencia: {
+        titulo: 'EVIDENCIA POR UNIDAD MÉDICA',
+        subtitulo,
+        nombreArchivo: `evidencia_por_unidad_medica_${base}`,
+        filas: evidenciaFiltrada.map((fila) => ({
+          ...fila,
+          foto: fila.evidencia_foto ? 'Sí' : 'No',
+          video: fila.evidencia_video ? 'Sí' : 'No',
+          nota: fila.evidencia_nota ? 'Sí' : 'No',
+          completa: fila.evidencia_completa ? 'Sí' : 'No',
+          avance: `${fila.evidencia_avance}%`,
+        })),
+        columnas: [
+          { etiqueta: 'CLUES', valor: 'clues', ancho: 18, tipo: 'texto' },
+          { etiqueta: 'NOMBRE DE LA UNIDAD', valor: 'unidad', ancho: 42, tipo: 'texto' },
+          { etiqueta: 'ENTIDAD', valor: 'entidad', ancho: 26, tipo: 'texto' },
+          { etiqueta: 'FOTO', valor: 'foto', ancho: 12, tipo: 'booleano' },
+          { etiqueta: 'VIDEO', valor: 'video', ancho: 12, tipo: 'booleano' },
+          { etiqueta: 'NOTA', valor: 'nota', ancho: 12, tipo: 'booleano' },
+          { etiqueta: 'EVIDENCIA COMPLETA', valor: 'completa', ancho: 20, tipo: 'booleano' },
+          { etiqueta: 'AVANCE', valor: 'avance', ancho: 14, tipo: 'porcentaje' },
+        ],
+        totales: {
+          foto: evidenciaFiltrada.filter((fila) => fila.evidencia_foto).length,
+          video: evidenciaFiltrada.filter((fila) => fila.evidencia_video).length,
+          nota: evidenciaFiltrada.filter((fila) => fila.evidencia_nota).length,
+          completa: evidenciaFiltrada.filter((fila) => fila.evidencia_completa).length,
+          avance: evidenciaFiltrada.length
+            ? `${Math.round(sumar(evidenciaFiltrada, 'evidencia_avance') / evidenciaFiltrada.length)}%`
+            : '0%',
+        },
+      },
+    };
+    const configuracion = configuraciones[apartado];
+    try {
+      if (formato === 'excel') await exportarTablaExcel(configuracion);
+      else await exportarTablaPdf(configuracion);
+    } catch {
+      setError(`No se pudo generar el archivo ${formato.toUpperCase()}.`);
+    }
+  }
+
   return (
     <div className="monitor-page">
       <div className="topbar monitor-topbar">
@@ -310,13 +433,17 @@ export default function MonitoreoPage() {
       </div>
 
       {datos && (
-        <section className="monitor-kpis" aria-label="Indicadores generales">
+        <section className={`monitor-kpis ${esVisor ? 'monitor-kpis--visor' : ''}`} aria-label="Indicadores generales">
           <Kpi icono={<CalendarDays />} etiqueta="CLUES programadas" valor={numero(resumen.registros)} detalle={`${numero(resumen.capturadas)} capturadas`} tono="neutral" />
           <Kpi icono={<CheckCircle2 />} etiqueta="CLUES atendidas" valor={numero(resumen.atendidas)} detalle={`${resumen.avance_porcentaje}% de avance`} tono="verde" />
           <Kpi icono={<ListChecks />} etiqueta="Pendientes" valor={numero(resumen.pendientes)} detalle="Por abastecer" tono="guinda" />
-          <Kpi icono={<Boxes />} etiqueta="Claves" valor={numero(resumen.claves)} detalle="A desplazar" tono="dorado" />
-          <Kpi icono={<PackageCheck />} etiqueta="Medicamento" valor={numero(resumen.piezas_medicamento)} detalle="Piezas programadas" tono="verde" />
-          <Kpi icono={<PackageCheck />} etiqueta="Material de curación" valor={numero(resumen.piezas_material_curacion)} detalle="Piezas programadas" tono="dorado" />
+          {!esVisor && (
+            <>
+              <Kpi icono={<Boxes />} etiqueta="Claves" valor={numero(resumen.claves)} detalle="A desplazar" tono="dorado" />
+              <Kpi icono={<PackageCheck />} etiqueta="Medicamento" valor={numero(resumen.piezas_medicamento)} detalle="Piezas programadas" tono="verde" />
+              <Kpi icono={<PackageCheck />} etiqueta="Material de curación" valor={numero(resumen.piezas_material_curacion)} detalle="Piezas programadas" tono="dorado" />
+            </>
+          )}
         </section>
       )}
 
@@ -364,33 +491,32 @@ export default function MonitoreoPage() {
 
       {datos && (
           <div className="monitor-apartados">
-            <Apartado numeroOrden="01" titulo="CLUES PROGRAMADAS" detalle={`${numero(resumen.registros)} CLUES`} abierto={apartadoAbierto === '01'} onAlternar={() => alternarApartado('01')}>
-              <div className="tablewrap monitor-tabla-resumen"><table><thead><tr><th>Entidad</th><th>CLUES</th><th>CLUES capturadas</th><th>CLUES pendientes</th></tr></thead><tbody>
-                {datos.entidades.map((fila) => <tr key={fila.id}><td className="nombre">{fila.entidad}</td><td>{numero(fila.registros)}</td><td><CantidadPorcentaje cantidad={fila.capturadas} porcentaje={fila.captura_porcentaje} tono="verde" /></td><td><CantidadPorcentaje cantidad={fila.pendientes_captura} porcentaje={fila.pendiente_captura_porcentaje} tono="rojo" /></td></tr>)}
-              </tbody></table></div>
-            </Apartado>
-
-            <Apartado numeroOrden="02" titulo="DISTRIBUCIÓN PROGRAMADA VS ABASTECIDAS" detalle={`${resumen.avance_porcentaje}% de avance`} abierto={apartadoAbierto === '02'} onAlternar={() => alternarApartado('02')}>
+            <Apartado numeroOrden="01" titulo="DISTRIBUCIÓN PROGRAMADA VS ABASTECIDA" detalle={`${resumen.avance_porcentaje}% de avance`} abierto={apartadoAbierto === '01'} onAlternar={() => alternarApartado('01')}>
+              <div className="monitor-tabla-acciones"><DescargarTabla onDescargar={(formato) => onDescargarTabla('programada', formato)} /></div>
               <div className="tablewrap monitor-tabla-resumen"><table><thead><tr><th>Entidad</th><th>Total de unidades médicas programadas</th><th>Total de unidades médicas abastecidas</th><th>Avance general</th></tr></thead><tbody>
                 {datos.entidades.map((fila) => <tr key={fila.id}><td className="nombre">{fila.entidad}</td><td className="monitor-dato--verde">{numero(fila.registros)}</td><td>{fila.atendidas ? numero(fila.atendidas) : '—'}</td><td>{fila.atendidas ? <span className="monitor-porcentaje"><i style={{ width: `${fila.avance_porcentaje}%` }} />{fila.avance_porcentaje}%</span> : '—'}</td></tr>)}
               </tbody></table></div>
             </Apartado>
 
-            <Apartado numeroOrden="03" titulo="CLUES QUE FALTAN POR ABASTECER" detalle={`${numero(resumen.pendientes)} pendientes`} abierto={apartadoAbierto === '03'} onAlternar={() => alternarApartado('03')}>
+            <Apartado numeroOrden="02" titulo="CLUES QUE FALTAN POR ABASTECER" detalle={`${numero(resumen.pendientes)} pendientes`} abierto={apartadoAbierto === '02'} onAlternar={() => alternarApartado('02')}>
+              <div className="monitor-tabla-acciones"><DescargarTabla onDescargar={(formato) => onDescargarTabla('pendientes', formato)} /></div>
               <div className="tablewrap monitor-tabla-resumen"><table><thead><tr><th>Estado</th><th>CLUES que faltan por abastecer</th><th>CLUES por programar</th></tr></thead><tbody>
                 {datos.entidades.map((fila) => <tr key={fila.id}><td className="nombre">{fila.entidad}</td><td className={fila.pendientes ? 'monitor-dato--rojo' : ''}>{fila.pendientes ? numero(fila.pendientes) : '—'}</td><td className={fila.por_programar ? 'monitor-dato--rojo' : ''}>{fila.por_programar ? numero(fila.por_programar) : '—'}</td></tr>)}
               </tbody></table></div>
             </Apartado>
 
-            <Apartado numeroOrden="04" titulo="LISTA DE CLUES" detalle={`${numero(resumen.registros)} registros`} abierto={apartadoAbierto === '04'} onAlternar={() => alternarApartado('04')}>
-              <label className="monitor-busqueda"><Search size={16} aria-hidden="true" /><input type="search" placeholder="Buscar CLUES, unidad, contacto, teléfono o correo" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></label>
-              <div className="tablewrap monitor-lista-clues"><table><thead><tr><th>CLUES</th><th>Unidad médica</th><th>Tipo de unidad</th><th>Estado</th><th>Municipio</th><th>Ruta</th><th>Fecha programada</th><th>Claves</th><th>Medicamento</th><th>Material curación</th><th>Quién recibe en unidad</th><th>Teléfono</th><th>Correo</th><th>Estatus</th></tr></thead><tbody>
-                {listaFiltrada.map((fila) => <tr key={fila.id} className={!fila.entregado && fila.tiene_evidencia ? 'monitor-fila--alerta' : undefined}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.tipo_unidad_medica || '—'}</td><td>{fila.entidad}</td><td>{fila.municipio || '—'}</td><td>{fila.ruta || '—'}</td><td>{fila.fecha_programada || 'Por programar'}</td><td>{numero(fila.claves)}</td><td>{numero(fila.piezas_medicamento)}</td><td>{numero(fila.piezas_material_curacion)}</td><td>{fila.quien_recibe || '—'}</td><td>{fila.telefono || '—'}</td><td>{fila.correo || '—'}</td><td><EstadoEntrega fila={fila} /></td></tr>)}
-                {listaFiltrada.length === 0 && <tr><td colSpan={14} className="tabla-vacia">No hay CLUES que coincidan.</td></tr>}
+            <Apartado numeroOrden="03" titulo="LISTA DE CLUES" detalle={`${numero(resumen.registros)} registros`} abierto={apartadoAbierto === '03'} onAlternar={() => alternarApartado('03')}>
+              <div className="monitor-tabla-herramientas">
+                <label className="monitor-busqueda"><Search size={16} aria-hidden="true" /><input type="search" placeholder="Buscar CLUES, unidad, contacto, teléfono o correo" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></label>
+                <DescargarTabla onDescargar={(formato) => onDescargarTabla('lista', formato)} />
+              </div>
+              <div className="tablewrap monitor-lista-clues"><table><thead><tr><th>CLUES</th><th>Unidad médica</th><th>Tipo de unidad</th><th>Estado</th><th>Municipio</th><th>Ruta</th><th>Fecha programada</th><th>Claves</th><th>Medicamento</th><th>Material curación</th><th>Quién recibe en unidad</th><th>Teléfono</th><th>Correo</th></tr></thead><tbody>
+                {listaFiltrada.map((fila) => <tr key={fila.id} className={!fila.entregado && fila.tiene_evidencia ? 'monitor-fila--alerta' : undefined}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.tipo_unidad_medica || '—'}</td><td>{fila.entidad}</td><td>{fila.municipio || '—'}</td><td>{fila.ruta || '—'}</td><td>{fila.fecha_programada || 'Por programar'}</td><td>{numero(fila.claves)}</td><td>{numero(fila.piezas_medicamento)}</td><td>{numero(fila.piezas_material_curacion)}</td><td>{fila.quien_recibe || '—'}</td><td>{fila.telefono || '—'}</td><td>{fila.correo || '—'}</td></tr>)}
+                {listaFiltrada.length === 0 && <tr><td colSpan={13} className="tabla-vacia">No hay CLUES que coincidan.</td></tr>}
               </tbody></table></div>
             </Apartado>
 
-            <Apartado numeroOrden="05" titulo="AVANCE POR FECHA" detalle={`${datos.fechas.length} fechas`} abierto={apartadoAbierto === '05'} onAlternar={() => alternarApartado('05')}>
+            <Apartado numeroOrden="04" titulo="HISTÓRICO DE PROGRAMACIÓN" detalle={`${datos.fechas.length} fechas`} abierto={apartadoAbierto === '04'} onAlternar={() => alternarApartado('04')}>
               <div className="monitor-grafica__modos" role="group" aria-label="Dato mostrado por fecha">
                 {METRICAS_FECHA.map((opcion) => (
                   <button key={opcion.clave} type="button" className={metricaFecha === opcion.clave ? 'activo' : ''} aria-pressed={metricaFecha === opcion.clave} onClick={() => setMetricaFecha(opcion.clave)}>
@@ -405,23 +531,7 @@ export default function MonitoreoPage() {
               ) : <p className="tabla-vacia">No hay fechas programadas.</p>}
             </Apartado>
 
-            <Apartado numeroOrden="06" titulo="EVIDENCIA POR UNIDAD MÉDICA" detalle={`${numero(resumen.registros)} unidades`} abierto={apartadoAbierto === '06'} onAlternar={() => alternarApartado('06')}>
-              <div className="monitor-evidencia__filtros">
-                <div className="field">
-                  <label htmlFor="monitor-evidencia-clues">CLUES</label>
-                  <label className="monitor-evidencia__busqueda">
-                    <Search size={15} aria-hidden="true" />
-                    <input id="monitor-evidencia-clues" type="search" placeholder="Buscar por CLUES o nombre de la unidad" value={busquedaEvidencia} onChange={(e) => setBusquedaEvidencia(e.target.value)} />
-                  </label>
-                </div>
-              </div>
-              <div className="tablewrap monitor-tabla-evidencia"><table><thead><tr><th>CLUES</th><th>Nombre de la unidad</th><th>Entidad</th><th>Foto</th><th>Video</th><th>Nota</th><th>Evidencia completa</th><th>Avance</th></tr></thead><tbody>
-                {evidenciaFiltrada.map((fila) => <tr key={fila.id}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.entidad}</td><td><MarcaEvidencia presente={fila.evidencia_foto} etiqueta="Foto" onAbrir={() => abrirEvidencia(fila, 'imagen')} /></td><td><MarcaEvidencia presente={fila.evidencia_video} etiqueta="Video" onAbrir={() => abrirEvidencia(fila, 'video')} /></td><td><MarcaEvidencia presente={fila.evidencia_nota} etiqueta="Nota" onAbrir={() => abrirEvidencia(fila, 'documento')} /></td><td><MarcaEvidencia presente={fila.evidencia_completa} etiqueta="Evidencia completa" /></td><td><span className={`monitor-avance-evidencia ${fila.evidencia_completa ? 'completo' : ''}`}>{fila.evidencia_avance}%</span></td></tr>)}
-                {evidenciaFiltrada.length === 0 && <tr><td colSpan={8} className="tabla-vacia">No hay unidades que coincidan.</td></tr>}
-              </tbody></table></div>
-            </Apartado>
-
-            <Apartado numeroOrden="07" titulo="AVANCE DE PICKING Y PACKING" detalle={`${datos.picking.dias_evidencia} días con evidencia`} abierto={apartadoAbierto === '07'} onAlternar={() => alternarApartado('07')}>
+            <Apartado numeroOrden="05" titulo="AVANCE PICKING Y PACKING" detalle={`${datos.picking.dias_evidencia} días con evidencia`} abierto={apartadoAbierto === '05'} onAlternar={() => alternarApartado('05')}>
               {puedeDescargarChecklist && (
                 <div className="monitor-picking__acciones">
                   <button className="btn-ghost" type="button" onClick={onGenerarChecklist} disabled={generandoChecklist}>
@@ -440,6 +550,24 @@ export default function MonitoreoPage() {
                 })}
               </tbody></table></div>
             </Apartado>
+
+            <Apartado numeroOrden="06" titulo="EVIDENCIA POR UNIDAD MÉDICA" detalle={`${numero(resumen.registros)} unidades`} abierto={apartadoAbierto === '06'} onAlternar={() => alternarApartado('06')}>
+              <div className="monitor-evidencia__filtros">
+                <div className="field">
+                  <label htmlFor="monitor-evidencia-clues">CLUES</label>
+                  <label className="monitor-evidencia__busqueda">
+                    <Search size={15} aria-hidden="true" />
+                    <input id="monitor-evidencia-clues" type="search" placeholder="Buscar por CLUES o nombre de la unidad" value={busquedaEvidencia} onChange={(e) => setBusquedaEvidencia(e.target.value)} />
+                  </label>
+                </div>
+                <DescargarTabla onDescargar={(formato) => onDescargarTabla('evidencia', formato)} />
+              </div>
+              <div className="tablewrap monitor-tabla-evidencia"><table><thead><tr><th>CLUES</th><th>Nombre de la unidad</th><th>Entidad</th><th>Foto</th><th>Video</th><th>Nota</th><th>Evidencia completa</th><th>Avance</th></tr></thead><tbody>
+                {evidenciaFiltrada.map((fila) => <tr key={fila.id}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.entidad}</td><td><MarcaEvidencia presente={fila.evidencia_foto} etiqueta="Foto" onAbrir={() => abrirEvidencia(fila, 'imagen')} /></td><td><MarcaEvidencia presente={fila.evidencia_video} etiqueta="Video" onAbrir={() => abrirEvidencia(fila, 'video')} /></td><td><MarcaEvidencia presente={fila.evidencia_nota} etiqueta="Nota" onAbrir={() => abrirEvidencia(fila, 'documento')} /></td><td><MarcaEvidencia presente={fila.evidencia_completa} etiqueta="Evidencia completa" /></td><td><span className={`monitor-avance-evidencia ${fila.evidencia_completa ? 'completo' : ''}`}>{fila.evidencia_avance}%</span></td></tr>)}
+                {evidenciaFiltrada.length === 0 && <tr><td colSpan={8} className="tabla-vacia">No hay unidades que coincidan.</td></tr>}
+              </tbody></table></div>
+            </Apartado>
+
           </div>
       )}
       {vistaRapida && (
