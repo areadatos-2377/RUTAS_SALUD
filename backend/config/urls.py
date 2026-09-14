@@ -3,7 +3,12 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from catalogos.views import EntidadViewSet, UnidadMedicaViewSet
-from entregas.views import EntregaViewSet, EvidenciaArchivoViewSet, GenerarPresentacionView
+from entregas.views import (
+    EntregaViewSet,
+    EvidenciaArchivoViewSet,
+    GenerarPresentacionView,
+    PresentacionJobEstadoView,
+)
 from picking_packing.views import EvidenciaViewSet as PickingPackingEvidenciaViewSet
 from picking_packing.views import GenerarChecklistView as PickingPackingGenerarChecklistView
 from picking_packing.views import GenerarPresentacionView as PickingPackingGenerarPresentacionView
@@ -36,6 +41,10 @@ urlpatterns = [
     path("api/auth/me/", yo),
     path("api/auth/activar/<str:uidb64>/<str:token>/", activar_cuenta),
     path("api/entregas/generar-presentacion/", GenerarPresentacionView.as_view()),
+    path(
+        "api/entregas/generar-presentacion/<int:pk>/estado/",
+        PresentacionJobEstadoView.as_view(),
+    ),
     path("api/picking-packing/generar-presentacion/", PickingPackingGenerarPresentacionView.as_view()),
     path("api/picking-packing/generar-checklist/", PickingPackingGenerarChecklistView.as_view()),
     path("api/", include(router.urls)),

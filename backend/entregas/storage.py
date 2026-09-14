@@ -40,8 +40,27 @@ def _cliente_s3():
         aws_access_key_id=settings.STORAGE_ACCESS_KEY_ID,
         aws_secret_access_key=settings.STORAGE_SECRET_ACCESS_KEY,
         region_name="auto",  # R2 no usa regiones tipo AWS
-        config=Config(s3={"addressing_style": "path"}),
+        # connect/read_timeout: sin esto, una sola descarga que R2 se tarde
+        # en responder se queda colgada indefinidamente (se vio en produccion
+        # -- una corrida de generar_presentacion se quedo minutos atorada
+        # aqui hasta que gunicorn mato el worker a la fuerza). Con timeout,
+        # esa descarga individual falla rapido en vez de tumbar todo el job.
+        config=Config(
+            s3={"addressing_style": "path"},
+            connect_timeout=10,
+            read_timeout=20,
+            retries={"max_attempts": 2},
+        ),
     )
+
+
+def crear_cliente():
+    """Version publica de _cliente_s3, para cuando alguien fuera de este
+    modulo necesita crear UN cliente y reutilizarlo en varias llamadas (ej.
+    presentacion.py, para no abrir una conexion nueva por cada foto de una
+    jornada de cientos de unidades) -- boto3 documenta que un cliente (a
+    diferencia de un Resource) si es seguro compartir entre hilos."""
+    return _cliente_s3()
 
 
 def _slug(texto: str) -> str:
@@ -71,6 +90,14 @@ def construir_key(entrega, nombre_archivo: str) -> str:
     )
 
 
+def construir_key_presentacion(jornada, nombre_archivo: str) -> str:
+    """Prefijo propio para los .pptx armados por PresentacionJob -- no son
+    evidencia subida por un usuario, son un resultado generado; separarlos
+    evita que se mezclen al navegar el bucket."""
+    sufijo = uuid.uuid4().hex[:8]
+    return f"presentaciones/{jornada.id}_{_slug(jornada.nombre)}/{sufijo}__{_nombre_seguro(nombre_archivo)}"
+
+
 def construir_key_picking_packing(jornada, entidad, fecha, nombre_archivo: str) -> str:
     """Igual que construir_key, pero para evidencia de picking_packing.Evidencia
     (por entidad y dia, sin unidad medica) -- prefijo propio para que no se
@@ -90,13 +117,16 @@ def subir_evidencia(archivo, key: str) -> None:
     )
 
 
-def generar_url_descarga(key: str, expira_segundos: int = 300) -> str:
+def generar_url_descarga(key: str, expira_segundos: int = 300, nombre_archivo: str | None = None) -> str:
     cliente = _cliente_s3()
-    return cliente.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": settings.STORAGE_BUCKET_NAME, "Key": key},
-        ExpiresIn=expira_segundos,
-    )
+    params = {"Bucket": settings.STORAGE_BUCKET_NAME, "Key": key}
+    if nombre_archivo:
+        # Para que el navegador descargue con un nombre legible (en vez del
+        # key completo con carpetas/uuid) sin tener que pasar el archivo por
+        # el backend -- lo mismo que hace el Content-Disposition en la
+        # respuesta directa, pero via el propio presigned URL de R2.
+        params["ResponseContentDisposition"] = f'attachment; filename="{nombre_archivo}"'
+    return cliente.generate_presigned_url("get_object", Params=params, ExpiresIn=expira_segundos)
 
 
 def eliminar_evidencia(key: str) -> None:
@@ -104,10 +134,28 @@ def eliminar_evidencia(key: str) -> None:
     cliente.delete_object(Bucket=settings.STORAGE_BUCKET_NAME, Key=key)
 
 
-def descargar_evidencia(key: str) -> bytes:
+def descargar_evidencia(key: str, cliente=None) -> bytes:
     """Trae el archivo completo a memoria -- para insertarlo en el .pptx de
     evidencia (generar_url_descarga sirve para que el navegador lo pida
-    directo a R2, esto es para cuando el propio backend necesita los bytes)."""
-    cliente = _cliente_s3()
+    directo a R2, esto es para cuando el propio backend necesita los bytes).
+
+    Acepta un cliente ya creado (opcional) para reutilizarlo entre muchas
+    llamadas -- el cliente de boto3 si es seguro compartirlo entre hilos
+    (a diferencia de un Resource), y crear uno nuevo por cada foto de una
+    jornada de cientos de unidades es puro overhead de mas."""
+    cliente = cliente or _cliente_s3()
     respuesta = cliente.get_object(Bucket=settings.STORAGE_BUCKET_NAME, Key=key)
     return respuesta["Body"].read()
+
+
+def subir_bytes(datos: bytes, key: str, content_type: str) -> None:
+    """Como subir_evidencia, pero para bytes ya armados en memoria (ej. el
+    .pptx de una presentacion generada) en vez de un archivo subido por el
+    usuario."""
+    import io
+
+    cliente = _cliente_s3()
+    cliente.upload_fileobj(
+        io.BytesIO(datos), settings.STORAGE_BUCKET_NAME, key,
+        ExtraArgs={"ContentType": content_type},
+    )

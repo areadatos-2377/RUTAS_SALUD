@@ -1,4 +1,3 @@
-from django.http import HttpResponse
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,10 +7,14 @@ from programacion.models import Jornada, ProgramacionVisita
 from usuarios.models import Usuario
 from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
 
-from . import presentacion, storage
-from .fechas import formato_fecha_es
-from .models import Entrega, EvidenciaArchivo
-from .serializers import EntregaSerializer, EvidenciaArchivoConsultaSerializer, EvidenciaArchivoSerializer
+from . import jobs, storage
+from .models import Entrega, EvidenciaArchivo, PresentacionJob
+from .serializers import (
+    EntregaSerializer,
+    EvidenciaArchivoConsultaSerializer,
+    EvidenciaArchivoSerializer,
+    PresentacionJobSerializer,
+)
 
 
 class EntregaViewSet(viewsets.ModelViewSet):
@@ -117,7 +120,15 @@ class GenerarPresentacionView(APIView):
     """Arma la presentacion de evidencia con la plantilla real (ver
     entregas/presentacion.py). No es una accion de EntregaViewSet porque no
     opera sobre una sola Entrega -- recibe fotos de varias unidades/entidades
-    a la vez, agrupadas por region al construir el .pptx."""
+    a la vez, agrupadas por region al construir el .pptx.
+
+    Antes armaba el .pptx dentro del mismo request POST y lo regresaba
+    directo -- con jornadas de cientos de unidades (cientos de descargas a
+    R2, una por una) eso tardaba mas que el timeout del worker de gunicorn y
+    tumbaba la request con un 500 (visto en produccion con 595 unidades).
+    Ahora el POST solo valida y lanza un PresentacionJob en segundo plano
+    (ver entregas/jobs.py) y regresa de inmediato -- el frontend hace
+    polling a PresentacionJobEstadoView hasta que quede "listo"."""
 
     permission_classes = [permissions.IsAuthenticated, PuedeGestionarJornadas]
 
@@ -127,39 +138,48 @@ class GenerarPresentacionView(APIView):
         except (Jornada.DoesNotExist, ValueError, TypeError):
             return Response({"detail": "Distribución no encontrada."}, status=400)
 
-        items = request.data.get("fotos") or []
-        if not items:
+        items_crudos = request.data.get("fotos") or []
+        if not items_crudos:
             return Response({"detail": "No se envió ninguna foto."}, status=400)
 
-        fotos = []
-        for item in items:
-            # Se resuelve CLUES/nombre de unidad/entidad desde la base, no
-            # se confia en texto que mande el cliente -- y se exige que la
-            # evidencia sea de tipo foto y pertenezca de verdad a esa
-            # visita Y a esta jornada, para que no se puedan mezclar datos
-            # de otra distribucion armando la peticion a mano.
-            evidencia = EvidenciaArchivo.objects.select_related(
-                "entrega__programacion_visita__unidad_medica__entidad",
-            ).filter(
-                pk=item.get("evidencia_id"),
-                tipo="foto",
-                entrega__programacion_visita_id=item.get("visita_id"),
-                entrega__programacion_visita__jornada_id=jornada.id,
-            ).first()
-            if evidencia is None:
-                continue
-            fotos.append({"visita": evidencia.entrega.programacion_visita, "evidencia": evidencia})
+        # Se valida aqui (rapido, antes de lanzar el hilo) que cada item
+        # traiga los 2 ids -- la resolucion real contra la base (que
+        # confirma que la evidencia es de tipo foto y pertenece de verdad a
+        # esa visita Y a esta jornada, para que no se puedan mezclar datos
+        # de otra distribucion armando la peticion a mano) pasa a
+        # entregas/jobs.py, que corre en el hilo en segundo plano.
+        items = [
+            {"visita_id": item.get("visita_id"), "evidencia_id": item.get("evidencia_id")}
+            for item in items_crudos
+            if item.get("visita_id") and item.get("evidencia_id")
+        ]
+        if not items:
+            return Response({"detail": "No se envió ninguna foto válida."}, status=400)
 
-        if not fotos:
-            return Response({"detail": "Ninguna de las fotos enviadas es válida."}, status=400)
-
-        dia_texto = formato_fecha_es(jornada.fecha_inicio)
-        buffer = presentacion.construir_presentacion(dia_texto, jornada.get_categoria_display(), fotos)
-
-        respuesta = HttpResponse(
-            buffer.getvalue(),
-            content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        job = PresentacionJob.objects.create(
+            jornada=jornada, creado_por=request.user, total_fotos=len(items),
         )
-        nombre_archivo = f"evidencia_{jornada.nombre}".replace(" ", "_") + ".pptx"
-        respuesta["Content-Disposition"] = f'attachment; filename="{nombre_archivo}"'
-        return respuesta
+        jobs.lanzar_job(job.id, jornada.id, items)
+        return Response(PresentacionJobSerializer(job).data, status=202)
+
+
+class PresentacionJobEstadoView(APIView):
+    """Para el polling del frontend mientras un PresentacionJob corre en
+    segundo plano. Solo quien lo lanzo (o super_admin) puede consultarlo --
+    no hay razon para que alguien vea el avance del job de otra persona."""
+
+    permission_classes = [permissions.IsAuthenticated, PuedeGestionarJornadas]
+
+    def get(self, request, pk=None):
+        job = PresentacionJob.objects.filter(pk=pk).first()
+        if job is None:
+            return Response({"detail": "No encontrado."}, status=404)
+        if job.creado_por_id != request.user.id and request.user.rol != Usuario.ROL_SUPER_ADMIN:
+            return Response({"detail": "No tienes permiso para ver este job."}, status=403)
+
+        datos = PresentacionJobSerializer(job).data
+        if job.estado == PresentacionJob.ESTADO_LISTO:
+            datos["url_descarga"] = storage.generar_url_descarga(
+                job.archivo_key, expira_segundos=3600, nombre_archivo=job.nombre_archivo,
+            )
+        return Response(datos)

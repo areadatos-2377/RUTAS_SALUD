@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Entrega, EvidenciaArchivo
+from .models import Entrega, EvidenciaArchivo, PresentacionJob
 from .storage import generar_url_descarga
 
 
@@ -17,6 +17,17 @@ class EvidenciaArchivoSerializer(serializers.ModelSerializer):
 
     def get_url_descarga(self, obj):
         return generar_url_descarga(obj.ruta_almacen)
+
+
+class PresentacionJobSerializer(serializers.ModelSerializer):
+    # url_descarga NO va aqui -- generarla implica una llamada a R2 (firmar
+    # la URL), y este serializer se usa tambien justo al crear el job
+    # (estado "pendiente", archivo_key todavia vacio). La vista la agrega a
+    # mano solo cuando estado == "listo" (ver PresentacionJobEstadoView).
+    class Meta:
+        model = PresentacionJob
+        fields = ["id", "estado", "total_fotos", "fotos_procesadas", "error_mensaje"]
+        read_only_fields = fields
 
 
 class EntregaSerializer(serializers.ModelSerializer):

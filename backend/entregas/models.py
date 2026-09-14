@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from programacion.models import ProgramacionVisita
+from programacion.models import Jornada, ProgramacionVisita
 
 
 class Entrega(models.Model):
@@ -58,3 +58,46 @@ class EvidenciaArchivo(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_display()} — {self.entrega}"
+
+
+class PresentacionJob(models.Model):
+    """Generar la presentacion de evidencia puede implicar cientos de
+    descargas a R2 (una jornada grande) -- eso ya no cabe en el ciclo
+    sincrono de una request HTTP (se probo: revienta el WORKER TIMEOUT de
+    gunicorn). Este modelo trackea el avance de una corrida en segundo
+    plano (ver entregas/jobs.py) para que el frontend pueda hacer polling
+    en vez de esperar la respuesta de un solo POST larguisimo."""
+
+    ESTADO_PENDIENTE = "pendiente"
+    ESTADO_PROCESANDO = "procesando"
+    ESTADO_LISTO = "listo"
+    ESTADO_ERROR = "error"
+    ESTADO_CHOICES = [
+        (ESTADO_PENDIENTE, "Pendiente"),
+        (ESTADO_PROCESANDO, "Procesando"),
+        (ESTADO_LISTO, "Listo"),
+        (ESTADO_ERROR, "Error"),
+    ]
+
+    jornada = models.ForeignKey(Jornada, on_delete=models.CASCADE, related_name="presentacion_jobs")
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="presentacion_jobs"
+    )
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE)
+    total_fotos = models.PositiveIntegerField(default=0)
+    fotos_procesadas = models.PositiveIntegerField(default=0)
+    # Key en R2 del .pptx ya armado (solo una vez estado == listo) -- el
+    # archivo no se guarda en el contenedor, Railway lo borra en cada deploy.
+    archivo_key = models.CharField(max_length=500, blank=True)
+    nombre_archivo = models.CharField(max_length=255, blank=True)
+    error_mensaje = models.TextField(blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "job de presentación"
+        verbose_name_plural = "jobs de presentación"
+        ordering = ["-creado_en"]
+
+    def __str__(self):
+        return f"Presentación {self.jornada} — {self.estado} ({self.fotos_procesadas}/{self.total_fotos})"
