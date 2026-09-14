@@ -74,9 +74,11 @@ export default function Shell() {
           <h1>Rutas de la salud</h1>
         </div>
         <nav className="nav">
-          <NavLink to="/monitoreo" className="nav-item">
-            {ICONOS.panel} Monitoreo y Seguimiento
-          </NavLink>
+          {usuario?.rol !== ROLES.USUARIO_ENTIDAD && (
+            <NavLink to="/monitoreo" className="nav-item">
+              {ICONOS.panel} Monitoreo y Seguimiento
+            </NavLink>
+          )}
           {usuario?.rol !== ROLES.VISOR && (
             <>
               <div className="nav-section">Programación</div>
