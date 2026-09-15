@@ -271,16 +271,16 @@
 .jornada-tabla tbody tr.jornada-fila--completa:hover td {
   background: #dcedde;
 }
-.jornada-tabla tbody tr.jornada-fila--evidencia-pendiente td {
+.jornada-tabla tbody tr.jornada-fila--datos-pendientes td {
   background: #fde8e7;
 }
-.jornada-tabla tbody tr.jornada-fila--evidencia-pendiente:hover td {
+.jornada-tabla tbody tr.jornada-fila--datos-pendientes:hover td {
   background: #fbd9d7;
 }
-.jornada-tabla tbody tr.jornada-fila--sin-evidencia td {
+.jornada-tabla tbody tr.jornada-fila--evidencias-pendientes td {
   background: #fff0d5;
 }
-.jornada-tabla tbody tr.jornada-fila--sin-evidencia:hover td {
+.jornada-tabla tbody tr.jornada-fila--evidencias-pendientes:hover td {
   background: #ffe7bd;
 }
 .jornada-acciones {

@@ -35,23 +35,6 @@
   margin: 2px 0 0;
 }
 
-.evidencia-panel__entregado {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
-  padding: 10px 12px;
-  background: var(--verde-pale-bg);
-  color: var(--verde-pale-tx);
-  border-radius: var(--radius-sm);
-  margin-bottom: 14px;
-}
-.evidencia-panel__entregado input {
-  width: 16px;
-  height: 16px;
-}
-
 .evidencia-categoria {
   margin-bottom: 18px;
   padding-bottom: 18px;
