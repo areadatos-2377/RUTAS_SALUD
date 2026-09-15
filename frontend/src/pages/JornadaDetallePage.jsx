@@ -5,6 +5,7 @@ import { api, ApiError } from '../api/client';
 import { useAuth, ROLES } from '../auth/AuthContext';
 import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
 import { exportarProgramacionExcel } from '../utils/exportarProgramacionExcel';
+import { ordenRegiones, regionDe } from '../utils/regiones';
 import EvidenciaPanel from './EvidenciaPanel';
 import EvidenciaVistaRapida from './EvidenciaVistaRapida';
 import FiltroColumna from './FiltroColumna';
@@ -135,6 +136,17 @@ export default function JornadaDetallePage() {
   // cambiar de entidad en el dropdown: se puede ir marcando fotos de
   // varias entidades antes de generar una sola presentacion con todo.
   const [fotosSeleccionadas, setFotosSeleccionadas] = useState({});
+  // '' = todas las fechas (sin filtro). Solo se usa para presentaciones --
+  // filtra que fotos entran a la presentacion, no la tabla. Ver el efecto
+  // de auto-seleccion mas abajo: tambien limita cuales unidades se marcan
+  // solas al elegir esta fecha.
+  const [fechaFiltroPresentacion, setFechaFiltroPresentacion] = useState('');
+  const [fechasDisponibles, setFechasDisponibles] = useState([]);
+  // Set vacio = todas las regiones (sin filtro) -- mismo criterio que
+  // filtrosEvidencia mas abajo. Region operativa se calcula del nombre de
+  // entidad (ver utils/regiones.js, espejo del mapeo fijo del backend), no
+  // es un campo que venga de la API.
+  const [regionesSeleccionadas, setRegionesSeleccionadas] = useState(() => new Set());
   const [generandoPresentacion, setGenerandoPresentacion] = useState(false);
   // Jornadas grandes (cientos de unidades) tardan minutos en generarse --
   // ver PresentacionJob en el backend. Se muestra avance en vez de solo un
@@ -227,6 +239,8 @@ export default function JornadaDetallePage() {
           clues: visita.unidad_medica,
           nombreUnidad: visita.unidad_medica_nombre,
           entidadNombre: visita.unidad_medica_entidad_nombre,
+          fechaDistribucion: visita.fecha_distribucion_programada,
+          region: regionDe(visita.unidad_medica_entidad_nombre),
         };
       }
       return copia;
@@ -243,6 +257,14 @@ export default function JornadaDetallePage() {
   // ?con_evidencia_imagen=1, que filtra en la base y evita traer las miles
   // de filas de precarga sin nada capturado. El usuario sigue pudiendo dar
   // clic en el marcador de una unidad puntual para cambiar cual foto se usa.
+  //
+  // fechaFiltroPresentacion (fecha_distribucion_programada) y
+  // regionesSeleccionadas limitan cuales unidades se auto-seleccionan --
+  // tambien vuelven a correr al cambiar cualquiera de los 2, para ofrecer
+  // las que corresponden sin tener que salir y volver a entrar a modo
+  // seleccion. Las fechas disponibles para el selector salen de esta misma
+  // llamada, sin filtrar, asi que siempre muestra todas las fechas con
+  // evidencia en la distribucion, no solo la elegida.
   useEffect(() => {
     if (!modoSeleccion || !jornada) return;
     let cancelado = false;
@@ -250,7 +272,16 @@ export default function JornadaDetallePage() {
     api.getAll(`/api/programacion-visitas/?jornada=${jornada.id}&con_evidencia_imagen=1`)
       .then((visitasConImagen) => {
         if (cancelado) return [];
-        const pendientes = visitasConImagen.filter((v) => !fotosSeleccionadas[v.id]);
+        setFechasDisponibles(
+          Array.from(new Set(
+            visitasConImagen.map((v) => v.fecha_distribucion_programada).filter(Boolean),
+          )).sort(),
+        );
+        const pendientes = visitasConImagen.filter((v) => (
+          !fotosSeleccionadas[v.id]
+          && (!fechaFiltroPresentacion || v.fecha_distribucion_programada === fechaFiltroPresentacion)
+          && (regionesSeleccionadas.size === 0 || regionesSeleccionadas.has(regionDe(v.unidad_medica_entidad_nombre)))
+        ));
         return Promise.all(
           pendientes.map(async (visita) => {
             try {
@@ -275,6 +306,8 @@ export default function JornadaDetallePage() {
               clues: r.visita.unidad_medica,
               nombreUnidad: r.visita.unidad_medica_nombre,
               entidadNombre: r.visita.unidad_medica_entidad_nombre,
+              fechaDistribucion: r.visita.fecha_distribucion_programada,
+              region: regionDe(r.visita.unidad_medica_entidad_nombre),
             };
           }
           return copia;
@@ -284,10 +317,10 @@ export default function JornadaDetallePage() {
 
     return () => { cancelado = true; };
     // fotosSeleccionadas se lee pero NO debe disparar este effect de nuevo
-    // (el propio efecto la actualiza -- entraria en loop). Solo debe correr
-    // al entrar a modo seleccion.
+    // (el propio efecto la actualiza -- entraria en loop). Si debe correr
+    // de nuevo al cambiar la fecha o las regiones elegidas.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modoSeleccion, jornada]);
+  }, [modoSeleccion, jornada, fechaFiltroPresentacion, regionesSeleccionadas]);
 
   // Antes esto era un solo POST que esperaba la presentacion terminada y la
   // bajaba como blob -- con una jornada de cientos de unidades (cientos de
@@ -300,10 +333,10 @@ export default function JornadaDetallePage() {
   async function onGenerarPresentacion() {
     setGenerandoPresentacion(true);
     setError(null);
-    const total = Object.keys(fotosSeleccionadas).length;
-    setPresentacionEnCurso({ procesadas: 0, total });
+    const entradas = Object.entries(fotosSeleccionadas).filter(([, foto]) => coincideFiltrosSeleccion(foto));
+    setPresentacionEnCurso({ procesadas: 0, total: entradas.length });
     try {
-      const fotos = Object.entries(fotosSeleccionadas).map(([visitaId, foto]) => ({
+      const fotos = entradas.map(([visitaId, foto]) => ({
         visita_id: Number(visitaId),
         evidencia_id: foto.evidenciaId,
       }));
@@ -329,7 +362,13 @@ export default function JornadaDetallePage() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setFotosSeleccionadas({});
+      // Solo se limpian las fotos que de verdad entraron en esta
+      // presentacion -- si habia otras marcadas de una fecha distinta (con
+      // el filtro activo) se quedan seleccionadas para una siguiente.
+      const idsEnviados = new Set(entradas.map(([visitaId]) => visitaId));
+      setFotosSeleccionadas((actuales) => Object.fromEntries(
+        Object.entries(actuales).filter(([visitaId]) => !idsEnviados.has(visitaId)),
+      ));
       setModoSeleccion(false);
     } catch {
       setError('No se pudo generar la presentación.');
@@ -406,6 +445,25 @@ export default function JornadaDetallePage() {
     });
   }
 
+  function onAlternarRegion(region) {
+    setRegionesSeleccionadas((actuales) => {
+      const nuevas = new Set(actuales);
+      if (nuevas.has(region)) nuevas.delete(region);
+      else nuevas.add(region);
+      return nuevas;
+    });
+  }
+
+  // Mismo criterio en 2 lugares: cuantas fotos marcadas cuentan para el
+  // boton/contador (fotosParaGenerar, mas abajo) y cuales de verdad se
+  // mandan al generar (onGenerarPresentacion, mas arriba) -- ambos deben
+  // filtrar exactamente igual o el contador mentiria.
+  function coincideFiltrosSeleccion(foto) {
+    if (fechaFiltroPresentacion && foto.fechaDistribucion !== fechaFiltroPresentacion) return false;
+    if (regionesSeleccionadas.size > 0 && !regionesSeleccionadas.has(foto.region)) return false;
+    return true;
+  }
+
   const filasVisibles = visitas?.filter((visita) => {
     if (!coincideFiltroEvidencia(visita, filtrosEvidencia)) return false;
     return COLUMNAS.every((columna) => {
@@ -458,6 +516,10 @@ export default function JornadaDetallePage() {
     : entidadSeleccionada?.nombre;
   const cantidadFiltrosActivos = Object.keys(filtrosColumna).length
     + filtrosEvidencia.size;
+  // Cuantas de las fotos marcadas de verdad entrarian en la presentacion
+  // con la fecha/regiones elegidas -- lo que se manda al generar es
+  // exactamente este mismo criterio, ver coincideFiltrosSeleccion.
+  const fotosParaGenerar = Object.values(fotosSeleccionadas).filter(coincideFiltrosSeleccion);
 
   return (
     <div>
@@ -487,12 +549,54 @@ export default function JornadaDetallePage() {
         {puedeGenerarPresentacion && visitas && (
           <div className="jornada-topbar__presentacion">
             {modoSeleccion && (
+              <div className="field jornada-topbar__regiones">
+                <label id="regiones-presentacion-label">Regiones operativas</label>
+                <details className="jornada-topbar__regiones-selector">
+                  <summary aria-labelledby="regiones-presentacion-label">
+                    <span>
+                      {regionesSeleccionadas.size === 0
+                        ? 'Todas las regiones'
+                        : `${regionesSeleccionadas.size} seleccionada${regionesSeleccionadas.size === 1 ? '' : 's'}`}
+                    </span>
+                    <span aria-hidden="true">▾</span>
+                  </summary>
+                  <div className="jornada-topbar__regiones-opciones">
+                    {ordenRegiones().map((region) => (
+                      <label key={region}>
+                        <input
+                          type="checkbox"
+                          checked={regionesSeleccionadas.has(region)}
+                          onChange={() => onAlternarRegion(region)}
+                        />
+                        <span>{region}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            )}
+            {modoSeleccion && fechasDisponibles.length > 0 && (
+              <div className="field jornada-topbar__fecha-presentacion">
+                <label htmlFor="fecha-presentacion">Fecha de distribución</label>
+                <select
+                  id="fecha-presentacion"
+                  value={fechaFiltroPresentacion}
+                  onChange={(e) => setFechaFiltroPresentacion(e.target.value)}
+                >
+                  <option value="">Todas las fechas</option>
+                  {fechasDisponibles.map((fecha) => (
+                    <option key={fecha} value={fecha}>{fecha}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {modoSeleccion && (
               <span className="jornada-topbar__contador">
                 {autoSeleccionando && 'Eligiendo fotos… · '}
-                {Object.keys(fotosSeleccionadas).length} foto{Object.keys(fotosSeleccionadas).length === 1 ? '' : 's'} elegida{Object.keys(fotosSeleccionadas).length === 1 ? '' : 's'}
+                {fotosParaGenerar.length} foto{fotosParaGenerar.length === 1 ? '' : 's'} elegida{fotosParaGenerar.length === 1 ? '' : 's'}
               </span>
             )}
-            {modoSeleccion && Object.keys(fotosSeleccionadas).length > 0 && (
+            {modoSeleccion && fotosParaGenerar.length > 0 && (
               <button className="btn-primary" onClick={onGenerarPresentacion} disabled={generandoPresentacion}>
                 {generandoPresentacion
                   ? presentacionEnCurso && presentacionEnCurso.procesadas > 0
