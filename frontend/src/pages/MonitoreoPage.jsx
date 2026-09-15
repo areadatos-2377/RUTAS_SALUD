@@ -20,6 +20,7 @@ import { ROLES, useAuth } from '../auth/AuthContext';
 import { CATEGORIA_LABEL } from '../utils/categoriaNiveles';
 import { exportarTablaExcel, exportarTablaPdf } from '../utils/exportarTabla';
 import EvidenciaVistaRapida from './EvidenciaVistaRapida';
+import PickingPackingVistaRapida from './PickingPackingVistaRapida';
 import '../styles/table.css';
 import './MonitoreoPage.css';
 
@@ -234,6 +235,7 @@ export default function MonitoreoPage() {
   const [apartadoAbierto, setApartadoAbierto] = useState('01');
   const [generandoChecklist, setGenerandoChecklist] = useState(false);
   const [vistaRapida, setVistaRapida] = useState(null);
+  const [vistaPicking, setVistaPicking] = useState(null);
   const [error, setError] = useState(null);
   const listaCluesRef = useRef(null);
 
@@ -377,6 +379,7 @@ export default function MonitoreoPage() {
         titulo: `ABASTECIMIENTO DE MEDICAMENTO Y MATERIAL DE CURACIÓN A UNIDADES MÉDICAS DE ${nivelAtencion} DE ATENCIÓN`,
         subtitulo,
         nombreArchivo: `distribucion_programada_vs_abastecida_${base}`,
+        orientacion: 'portrait',
         filas: datos.entidades,
         columnas: [
           { etiqueta: 'ENTIDAD', valor: 'entidad', ancho: 30, tipo: 'texto' },
@@ -467,7 +470,7 @@ export default function MonitoreoPage() {
   }
 
   return (
-    <div className="monitor-page">
+    <div className={`monitor-page monitor-page--${nivel === 'primer_nivel' ? 'primer' : 'segundo'}`}>
       <div className="topbar monitor-topbar">
         <h2>Monitoreo y Seguimiento</h2>
       </div>
@@ -513,7 +516,7 @@ export default function MonitoreoPage() {
         />
         {datos && (
           <div className="monitor-filtros__contexto">
-            <span className={`badge ${datos.jornada.categoria === 'primer_nivel' ? 'verde' : 'dorado'}`}>
+            <span className={`badge ${datos.jornada.categoria === 'primer_nivel' ? 'verde' : 'guinda'}`}>
               {CATEGORIA_LABEL[datos.jornada.categoria] || datos.jornada.categoria}
             </span>
             <span>{datos.jornada.fecha_inicio} al {datos.jornada.fecha_fin}</span>
@@ -618,6 +621,14 @@ export default function MonitoreoPage() {
                         </td>
                       </tr>
                     ))}
+                    {historico.entidades.length > 0 && (
+                      <tr className="monitor-historico__total">
+                        <td className="nombre">Total</td>
+                        <td>{historico.anterior ? numero(sumar(historico.entidades, 'anterior')) : '—'}</td>
+                        <td>{numero(sumar(historico.entidades, 'actual'))}</td>
+                        <td>{historico.anterior ? numero(sumar(historico.entidades, 'diferencia')) : '—'}</td>
+                      </tr>
+                    )}
                     {historico.entidades.length === 0 && <tr><td colSpan={4} className="tabla-vacia">No hay estados para comparar.</td></tr>}
                   </tbody>
                 </table>
@@ -638,7 +649,7 @@ export default function MonitoreoPage() {
                   const porDia = Object.fromEntries(fila.picking_por_dia.map((dato) => [dato.fecha, dato]));
                   return <tr key={fila.id}><td className="nombre">{fila.entidad}</td>{diasPicking.map((dia) => {
                     const marcas = porDia[dia] || { foto: false, video: false };
-                    return <td key={dia} className="monitor-picking__dia"><span className={`monitor-picking__indicador ${marcas.foto ? 'activo' : ''}`} title={marcas.foto ? 'Ya tiene foto' : 'Falta foto'}><Image size={14} aria-hidden="true" /><span className="sr-only">Foto</span></span><span className={`monitor-picking__indicador ${marcas.video ? 'activo' : ''}`} title={marcas.video ? 'Ya tiene video' : 'Falta video'}><Film size={14} aria-hidden="true" /><span className="sr-only">Video</span></span></td>;
+                    return <td key={dia} className="monitor-picking__dia">{marcas.foto ? <button type="button" className="monitor-picking__indicador activo" title="Ver foto" aria-label={`Ver foto de ${fila.entidad} del ${dia}`} onClick={() => setVistaPicking({ entidad: { id: fila.id, nombre: fila.entidad }, fecha: dia, tipo: 'foto' })}><Image size={14} aria-hidden="true" /></button> : <span className="monitor-picking__indicador" title="Falta foto"><Image size={14} aria-hidden="true" /><span className="sr-only">Falta foto</span></span>}{marcas.video ? <button type="button" className="monitor-picking__indicador activo" title="Ver video" aria-label={`Ver video de ${fila.entidad} del ${dia}`} onClick={() => setVistaPicking({ entidad: { id: fila.id, nombre: fila.entidad }, fecha: dia, tipo: 'video' })}><Film size={14} aria-hidden="true" /></button> : <span className="monitor-picking__indicador" title="Falta video"><Film size={14} aria-hidden="true" /><span className="sr-only">Falta video</span></span>}</td>;
                   })}<td className="monitor-picking__dias-total">{fila.picking_dias_evidencia || '—'}</td></tr>;
                 })}
               </tbody></table></div>
@@ -668,6 +679,15 @@ export default function MonitoreoPage() {
           visita={vistaRapida.visita}
           categoria={vistaRapida.categoria}
           onCerrar={() => setVistaRapida(null)}
+        />
+      )}
+      {vistaPicking && (
+        <PickingPackingVistaRapida
+          jornada={datos.jornada}
+          entidad={vistaPicking.entidad}
+          fecha={vistaPicking.fecha}
+          tipo={vistaPicking.tipo}
+          onCerrar={() => setVistaPicking(null)}
         />
       )}
     </div>

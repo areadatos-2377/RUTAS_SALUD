@@ -98,7 +98,7 @@ function estilizarCeldaExcel(celda, columna, esTotal = false, esPrimera = false)
   }
 }
 
-export async function exportarTablaExcel({ titulo, subtitulo, nombreArchivo, columnas, filas, totales }) {
+export async function exportarTablaExcel({ titulo, subtitulo, nombreArchivo, columnas, filas, totales, orientacion = 'landscape' }) {
   const { default: ExcelJS } = await import('exceljs');
   const logo = await cargarLogoInstitucional();
   const libro = new ExcelJS.Workbook();
@@ -107,7 +107,7 @@ export async function exportarTablaExcel({ titulo, subtitulo, nombreArchivo, col
 
   const hoja = libro.addWorksheet('Reporte', {
     views: [{ state: 'frozen', ySplit: 7 }],
-    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
+    pageSetup: { orientation: orientacion, fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
   });
   hoja.columns = columnas.map((columna) => ({ width: columna.ancho || 18 }));
   hoja.properties.defaultRowHeight = 19;
@@ -203,7 +203,7 @@ function dibujarCabeceraPdf(documento, logo, titulo, subtitulo, corte) {
   documento.text(corte, anchoPagina / 2, 44.8, { align: 'center' });
 }
 
-export async function exportarTablaPdf({ titulo, subtitulo, nombreArchivo, columnas, filas, totales }) {
+export async function exportarTablaPdf({ titulo, subtitulo, nombreArchivo, columnas, filas, totales, orientacion = 'landscape' }) {
   const [{ jsPDF }, { autoTable }] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
@@ -211,7 +211,7 @@ export async function exportarTablaPdf({ titulo, subtitulo, nombreArchivo, colum
   const logo = await cargarLogoInstitucional();
   const tablaAmplia = columnas.length > 8;
   const documento = new jsPDF({
-    orientation: 'landscape',
+    orientation: orientacion,
     unit: 'mm',
     format: tablaAmplia ? 'a3' : 'a4',
   });
