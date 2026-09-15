@@ -9,6 +9,7 @@ import CoordinadoresPage from './pages/CoordinadoresPage';
 import UnidadesMedicasPage from './pages/UnidadesMedicasPage';
 import UsuariosPage from './pages/UsuariosPage';
 import EvidenciaListaPage from './pages/EvidenciaListaPage';
+import NotificacionesPage from './pages/NotificacionesPage';
 import PickingPackingPage from './pages/PickingPackingPage';
 import PickingPackingJornadaPage from './pages/PickingPackingJornadaPage';
 import MonitoreoPage from './pages/MonitoreoPage';
@@ -96,6 +97,14 @@ export default function App() {
             element={
               <RequireRole roles={[]}>
                 <EvidenciaListaPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="notificaciones"
+            element={
+              <RequireRole roles={ROLES_NO_VISOR}>
+                <NotificacionesPage />
               </RequireRole>
             }
           />

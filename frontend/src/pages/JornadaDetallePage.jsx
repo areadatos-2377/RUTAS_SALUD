@@ -111,6 +111,12 @@ export default function JornadaDetallePage() {
   const { id } = useParams();
   const { usuario } = useAuth();
   const puedeEscribir = usuario?.rol === ROLES.USUARIO_ENTIDAD || usuario?.rol === ROLES.SUPER_ADMIN;
+  // admin_nacional no edita programacion (puedeEscribir en falso), pero
+  // si necesita poder ABRIR el panel de evidencia de una unidad -- ahi es
+  // donde marca una foto/documento/video con problema (ver
+  // EvidenciaPanel.jsx). Sin esto, "Marcar problema" nunca seria
+  // alcanzable para el rol que mas la usa.
+  const puedeVerEvidencia = puedeEscribir || usuario?.rol === ROLES.ADMIN_NACIONAL;
   const requiereSelectorEntidad = usuario?.rol !== ROLES.USUARIO_ENTIDAD;
   const puedeGenerarPresentacion = usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
 
@@ -783,8 +789,10 @@ export default function JornadaDetallePage() {
                   <td className="jornada-acciones">
                     {/* Marcadores: visibles para cualquiera que llegue a esta tabla
                         (incluye admin_nacional, que no puede editar pero si elegir
-                        fotos para la presentacion) -- Evidencia/Eliminar siguen
-                        abajo, solo para quien puede escribir. */}
+                        fotos para la presentacion). Evidencia tambien es para
+                        admin_nacional (necesita poder abrir el panel para marcar
+                        problemas, ver puedeVerEvidencia) -- Eliminar sigue siendo
+                        solo para quien puede escribir. */}
                     {visita.fecha_distribucion_programada && (
                       <>
                         {visita.tiene_evidencia_imagen && (
@@ -816,14 +824,14 @@ export default function JornadaDetallePage() {
                         )}
                       </>
                     )}
-                    {puedeEscribir && (
+                    {puedeVerEvidencia && (
                       <>
                         {/* Evidencia solo tiene sentido si ya hay algo capturado -- no en
                             las miles de filas precargadas todavia vacias. */}
                         {visita.fecha_distribucion_programada && (
                           <button className="btn-ghost" onClick={() => setVisitaEvidencia(visita)}>Evidencia</button>
                         )}
-                        {!distribucionCerrada && (
+                        {puedeEscribir && !distribucionCerrada && (
                           <button className="btn-ghost" onClick={() => onEliminar(visita)}>Eliminar</button>
                         )}
                       </>

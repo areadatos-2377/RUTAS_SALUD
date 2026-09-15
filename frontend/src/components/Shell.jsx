@@ -1,4 +1,6 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { api } from '../api/client';
 import { useAuth, ROLES } from '../auth/AuthContext';
 import './Shell.css';
 
@@ -30,6 +32,12 @@ const ICONOS = {
       <path d="M8 6l1.5-2.5h5L16 6" />
     </svg>
   ),
+  notificaciones: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  ),
   pickingPacking: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 8l9-5 9 5-9 5-9-5Z" />
@@ -54,6 +62,7 @@ const ROL_LABEL = {
 export default function Shell() {
   const { usuario, cerrarSesion } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   async function salir() {
     await cerrarSesion();
@@ -61,6 +70,44 @@ export default function Shell() {
   }
 
   const iniciales = (usuario?.username || '?').slice(0, 2).toUpperCase();
+
+  // Notificaciones: pendientes de corregir (Capturista) o de resolver
+  // (Nacional/Administrador) -- el backend ya filtra cual le toca ver a
+  // cada quien. El contador se refresca en 2 vias (sin websockets/push,
+  // no hay esa infraestructura en el proyecto): al navegar entre
+  // pestanas (gratis, cubre el uso normal) y con un intervalo de
+  // respaldo que se pausa solo cuando la pestana del navegador no esta
+  // visible, para no gastar nada de fondo si se deja abierta sin usarla.
+  const puedeVerNotificaciones = usuario?.rol !== ROLES.VISOR;
+  const [contadorNotificaciones, setContadorNotificaciones] = useState(0);
+
+  useEffect(() => {
+    if (!puedeVerNotificaciones) return;
+    let cancelado = false;
+    api.getAll('/api/notificaciones-evidencia/')
+      .then((lista) => { if (!cancelado) setContadorNotificaciones(lista.length); })
+      .catch(() => {}); // un badge que no cargo no debe tumbar el resto del shell
+    return () => { cancelado = true; };
+  }, [puedeVerNotificaciones, location.pathname]);
+
+  useEffect(() => {
+    if (!puedeVerNotificaciones) return;
+    let intervalId = null;
+    const refrescar = () => {
+      api.getAll('/api/notificaciones-evidencia/')
+        .then((lista) => setContadorNotificaciones(lista.length))
+        .catch(() => {});
+    };
+    const iniciar = () => { if (!intervalId) intervalId = setInterval(refrescar, 90000); };
+    const detener = () => { if (intervalId) { clearInterval(intervalId); intervalId = null; } };
+    const onVisibilidad = () => (document.visibilityState === 'visible' ? iniciar() : detener());
+    if (document.visibilityState === 'visible') iniciar();
+    document.addEventListener('visibilitychange', onVisibilidad);
+    return () => {
+      detener();
+      document.removeEventListener('visibilitychange', onVisibilidad);
+    };
+  }, [puedeVerNotificaciones]);
 
   return (
     <div className="shell">
@@ -77,6 +124,14 @@ export default function Shell() {
           {usuario?.rol !== ROLES.USUARIO_ENTIDAD && (
             <NavLink to="/monitoreo" className="nav-item">
               {ICONOS.panel} Monitoreo y Seguimiento
+            </NavLink>
+          )}
+          {puedeVerNotificaciones && (
+            <NavLink to="/notificaciones" className="nav-item">
+              {ICONOS.notificaciones} Notificaciones
+              {contadorNotificaciones > 0 && (
+                <span className="nav-item__badge">{contadorNotificaciones}</span>
+              )}
             </NavLink>
           )}
           {usuario?.rol !== ROLES.VISOR && (

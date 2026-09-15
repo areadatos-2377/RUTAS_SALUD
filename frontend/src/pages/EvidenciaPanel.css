@@ -66,11 +66,16 @@
 
 .evidencia-item {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+}
+.evidencia-item__fila {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .evidencia-item__info {
   flex: 1;
@@ -93,6 +98,39 @@
 .evidencia-item__info span {
   font-size: 11px;
   color: var(--gray-tx);
+}
+.evidencia-item__acciones {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.evidencia-item__notificado {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--guinda);
+  background: var(--guinda-pale-bg);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.evidencia-item__problema {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.evidencia-item__problema textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.evidencia-item__problema-acciones {
+  display: flex;
+  gap: 8px;
 }
 
 .evidencia-panel__subir {

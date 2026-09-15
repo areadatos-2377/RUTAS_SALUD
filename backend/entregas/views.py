@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,14 +6,20 @@ from rest_framework.views import APIView
 
 from programacion.models import Jornada, ProgramacionVisita
 from usuarios.models import Usuario
-from usuarios.permissions import PuedeGestionarJornadas, PuedeGestionarProgramacion
+from usuarios.permissions import (
+    PuedeAbrirEntrega,
+    PuedeGestionarJornadas,
+    PuedeGestionarNotificaciones,
+    PuedeGestionarProgramacion,
+)
 
 from . import jobs, storage
-from .models import Entrega, EvidenciaArchivo, PresentacionJob
+from .models import Entrega, EvidenciaArchivo, NotificacionEvidencia, PresentacionJob
 from .serializers import (
     EntregaSerializer,
     EvidenciaArchivoConsultaSerializer,
     EvidenciaArchivoSerializer,
+    NotificacionEvidenciaSerializer,
     PresentacionJobSerializer,
 )
 
@@ -23,6 +30,16 @@ class EntregaViewSet(viewsets.ModelViewSet):
     ).prefetch_related("evidencias")
     serializer_class = EntregaSerializer
     permission_classes = [permissions.IsAuthenticated, PuedeGestionarProgramacion]
+
+    def get_permissions(self):
+        if self.action == "create":
+            # create() es en realidad "abrir/consultar" (ver el metodo) --
+            # admin_nacional necesita poder llamarlo para abrir el panel de
+            # evidencia y marcar problemas, aunque siga sin poder
+            # subir/borrar/marcar entregado (eso sigue siendo
+            # PuedeGestionarProgramacion, en el resto del ViewSet).
+            return [permissions.IsAuthenticated(), PuedeAbrirEntrega()]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -183,3 +200,82 @@ class PresentacionJobEstadoView(APIView):
                 job.archivo_key, expira_segundos=3600, nombre_archivo=job.nombre_archivo,
             )
         return Response(datos)
+
+
+class NotificacionEvidenciaViewSet(viewsets.ModelViewSet):
+    """Nacional/super_admin marca una evidencia con problema y comenta;
+    usuario_entidad la ve en su pestaña Notificaciones hasta marcarla
+    corregida; quien la creo la sigue viendo hasta marcarla lista. Ver plan
+    2026-09-15-notificaciones-evidencia. Sin PATCH/DELETE genericos -- todo
+    pasa por create() y las 2 acciones de abajo."""
+
+    http_method_names = ["get", "post", "head", "options"]
+    queryset = NotificacionEvidencia.objects.select_related(
+        "creado_por", "corregido_por", "resuelto_por", "evidencia",
+        "visita__unidad_medica__entidad", "visita__jornada",
+    )
+    serializer_class = NotificacionEvidenciaSerializer
+    permission_classes = [permissions.IsAuthenticated, PuedeGestionarNotificaciones]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        usuario = self.request.user
+        if usuario.rol == Usuario.ROL_USUARIO_ENTIDAD:
+            # Lo pendiente de su entidad -- ya corregida o ya resuelta no
+            # le sirve de nada verla de nuevo aqui.
+            return qs.filter(
+                visita__unidad_medica__entidad=usuario.entidad,
+                corregido_en__isnull=True,
+                resuelto_en__isnull=True,
+            )
+        if usuario.rol == Usuario.ROL_ADMIN_NACIONAL:
+            # Solo lo que el mismo creo, mientras siga sin resolver.
+            return qs.filter(creado_por=usuario, resuelto_en__isnull=True)
+        # super_admin: todo lo que siga sin resolver, de cualquier creador.
+        return qs.filter(resuelto_en__isnull=True)
+
+    def create(self, request, *args, **kwargs):
+        evidencia = EvidenciaArchivo.objects.select_related(
+            "entrega__programacion_visita__unidad_medica__entidad",
+        ).filter(pk=request.data.get("evidencia_id")).first()
+        if evidencia is None:
+            return Response({"evidencia_id": ["No existe."]}, status=400)
+
+        comentario = (request.data.get("comentario") or "").strip()
+        if not comentario:
+            return Response({"comentario": ["Este campo es requerido."]}, status=400)
+
+        if evidencia.notificaciones.filter(resuelto_en__isnull=True).exists():
+            return Response(
+                {"detail": "Ya hay una notificación sin resolver para esta evidencia."}, status=400,
+            )
+
+        notificacion = NotificacionEvidencia.objects.create(
+            visita=evidencia.entrega.programacion_visita,
+            evidencia=evidencia,
+            tipo_evidencia=evidencia.tipo,
+            nombre_archivo_original=evidencia.nombre_original,
+            comentario=comentario,
+            creado_por=request.user,
+        )
+        return Response(NotificacionEvidenciaSerializer(notificacion).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="marcar-corregida")
+    def marcar_corregida(self, request, pk=None):
+        # get_object() ya usa get_queryset() (scoped a la entidad del
+        # usuario, sin corregir ni resolver) -- si no aplica, 404 solo.
+        notificacion = self.get_object()
+        notificacion.corregido_en = timezone.now()
+        notificacion.corregido_por = request.user
+        notificacion.save(update_fields=["corregido_en", "corregido_por"])
+        return Response(NotificacionEvidenciaSerializer(notificacion).data)
+
+    @action(detail=True, methods=["post"], url_path="marcar-listo")
+    def marcar_listo(self, request, pk=None):
+        # get_object() ya usa get_queryset() (scoped a "creado_por==yo" para
+        # admin_nacional, sin restriccion de creador para super_admin).
+        notificacion = self.get_object()
+        notificacion.resuelto_en = timezone.now()
+        notificacion.resuelto_por = request.user
+        notificacion.save(update_fields=["resuelto_en", "resuelto_por"])
+        return Response(NotificacionEvidenciaSerializer(notificacion).data)

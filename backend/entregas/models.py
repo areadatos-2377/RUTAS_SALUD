@@ -101,3 +101,58 @@ class PresentacionJob(models.Model):
 
     def __str__(self):
         return f"Presentación {self.jornada} — {self.estado} ({self.fotos_procesadas}/{self.total_fotos})"
+
+
+class NotificacionEvidencia(models.Model):
+    """Nacional/super_admin marca una evidencia (foto/documento/video)
+    subida por un usuario_entidad como "tiene un problema" y deja un
+    comentario -- esto le avisa al usuario_entidad de esa entidad (en la
+    pestana Notificaciones) hasta que alguno marque que ya corrigio, y le
+    sigue avisando a quien la creo hasta que el mismo la marque lista
+    (2 estados independientes, ver plan 2026-09-15-notificaciones-evidencia).
+    Sin campo "estado" separado -- se deriva de corregido_en/resuelto_en,
+    para que nunca puedan desincronizarse entre si."""
+
+    visita = models.ForeignKey(
+        ProgramacionVisita, on_delete=models.CASCADE, related_name="notificaciones_evidencia"
+    )
+    # Nullable + SET_NULL a proposito: si el usuario_entidad borra el
+    # archivo malo al corregirlo, la notificacion debe sobrevivir (si no,
+    # se cerraria sola sin que quien la creo alcance a revisar la
+    # correccion). tipo_evidencia/nombre_archivo_original quedan copiados
+    # aparte para poder mostrar de que trataba aunque el archivo ya no este.
+    evidencia = models.ForeignKey(
+        EvidenciaArchivo, on_delete=models.SET_NULL, null=True, related_name="notificaciones"
+    )
+    tipo_evidencia = models.CharField(max_length=20, choices=EvidenciaArchivo.TIPO_CHOICES)
+    nombre_archivo_original = models.CharField(max_length=255)
+
+    comentario = models.TextField()
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="notificaciones_creadas"
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    # Se pone cuando un usuario_entidad de la entidad indica que ya
+    # corrigio (o elimino) el archivo marcado -- un solo boton, sin
+    # distinguir cual de las 2 cosas hizo (mismo mensaje para quien creo la
+    # notificacion en cualquier caso: "ya puedes revisar").
+    corregido_en = models.DateTimeField(null=True, blank=True)
+    corregido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="notificaciones_corregidas",
+    )
+
+    resuelto_en = models.DateTimeField(null=True, blank=True)
+    resuelto_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="notificaciones_resueltas",
+    )
+
+    class Meta:
+        verbose_name = "notificación de evidencia"
+        verbose_name_plural = "notificaciones de evidencia"
+        ordering = ["-creado_en"]
+
+    def __str__(self):
+        return f"{self.get_tipo_evidencia_display()} {self.nombre_archivo_original} — {self.visita}"
