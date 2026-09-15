@@ -17,30 +17,12 @@ export default function EvidenciaPanel({ visita, onCerrar }) {
   const [entrega, setEntrega] = useState(null);
   const [error, setError] = useState(null);
   const [subiendoCategoria, setSubiendoCategoria] = useState(null);
-  const [guardandoEntregado, setGuardandoEntregado] = useState(false);
 
   useEffect(() => {
     api.post('/api/entregas/', { programacion_visita: visita.id })
       .then(setEntrega)
       .catch(() => setError('No se pudo abrir la entrega de esta unidad.'));
   }, [visita.id]);
-
-  async function onCambiarEntregado(e) {
-    const entregado = e.target.checked;
-    setGuardandoEntregado(true);
-    setError(null);
-    try {
-      const actualizada = await api.patch(`/api/entregas/${entrega.id}/`, {
-        entregado,
-        fecha_entrega: entregado ? (entrega.fecha_entrega || new Date().toISOString().slice(0, 10)) : null,
-      });
-      setEntrega(actualizada);
-    } catch {
-      setError('No se pudo actualizar el estatus de entrega.');
-    } finally {
-      setGuardandoEntregado(false);
-    }
-  }
 
   async function onSubirArchivos(categoria, e) {
     const archivos = Array.from(e.target.files || []);
@@ -94,7 +76,6 @@ export default function EvidenciaPanel({ visita, onCerrar }) {
       tiene_evidencia_imagen: tipos.includes('foto'),
       tiene_evidencia_documento: tipos.includes('pdf') || tipos.includes('documento'),
       tiene_evidencia_video: tipos.includes('video'),
-      entregado: entrega.entregado,
     });
   }
 
@@ -115,16 +96,6 @@ export default function EvidenciaPanel({ visita, onCerrar }) {
 
         {entrega && (
           <>
-            <label className="evidencia-panel__entregado">
-              <input
-                type="checkbox"
-                checked={entrega.entregado}
-                disabled={guardandoEntregado}
-                onChange={onCambiarEntregado}
-              />
-              Entregado{entrega.fecha_entrega ? ` — ${entrega.fecha_entrega}` : ''}
-            </label>
-
             {CATEGORIAS.map((categoria) => {
               const evidenciasCategoria = entrega.evidencias.filter((ev) => categoria.tipos.includes(ev.tipo));
               const subiendo = subiendoCategoria === categoria.key;

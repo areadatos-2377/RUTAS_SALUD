@@ -39,6 +39,12 @@ const COLUMNAS = [
   { key: 'correo', label: 'Correo', editable: true, tipo: 'texto', vacio: '—', maxLength: 150 },
 ];
 const COLUMNAS_EDITABLES = COLUMNAS.filter((c) => c.editable);
+const CAMPOS_OPERATIVOS = [
+  'fecha_distribucion_programada',
+  'claves_a_desplazar',
+  'piezas_medicamento',
+  'piezas_material_curacion',
+];
 
 // Mismo texto que ya se ve en la celda (con su "Pendiente"/"—" cuando esta
 // vacio) -- se usa tanto para pintar la tabla como para armar la lista de
@@ -70,10 +76,21 @@ function capturaCompleta(visita) {
   });
 }
 
+function datosOperativosCompletos(visita) {
+  return CAMPOS_OPERATIVOS.every((campo) => {
+    const valor = visita[campo];
+    return campo === 'fecha_distribucion_programada'
+      ? valor !== null && valor !== undefined && String(valor).trim() !== ''
+      : Number(valor) > 0;
+  });
+}
+
 function claseEstadoFila(visita) {
-  if (tieneEvidencia(visita) && !visita.entregado) return 'jornada-fila--evidencia-pendiente';
-  if (tieneEvidencia(visita) && visita.entregado) return 'jornada-fila--completa';
-  if (!tieneEvidencia(visita) && capturaCompleta(visita)) return 'jornada-fila--sin-evidencia';
+  if (capturaCompleta(visita) && visita.tiene_evidencia_imagen && visita.tiene_evidencia_documento) {
+    return 'jornada-fila--completa';
+  }
+  if (capturaCompleta(visita)) return 'jornada-fila--evidencias-pendientes';
+  if (datosOperativosCompletos(visita)) return 'jornada-fila--datos-pendientes';
   return undefined;
 }
 
