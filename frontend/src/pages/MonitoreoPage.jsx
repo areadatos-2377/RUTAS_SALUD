@@ -492,7 +492,7 @@ export default function MonitoreoPage() {
 
       <section className="monitor-filtros" aria-label="Filtros de monitoreo">
         <div className="field">
-          <label htmlFor="monitor-nivel">Nivel</label>
+          <label htmlFor="monitor-nivel">Nivel de atención</label>
           <select id="monitor-nivel" value={nivel} onChange={(e) => onCambiarNivel(e.target.value)}>
             {NIVELES.map((opcion) => (
               <option key={opcion.valor} value={opcion.valor}>{opcion.etiqueta}</option>

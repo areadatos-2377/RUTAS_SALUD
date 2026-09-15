@@ -9,6 +9,7 @@ const COLORES = {
   beige: 'FFE1CBAA',
   borde: 'FFD8BF98',
   amarillo: 'FFFFFF00',
+  rojo: 'FFC62828',
   blanco: 'FFFFFFFF',
   negro: 'FF1A1A1A',
   gris: 'FF8A8A8A',
@@ -45,11 +46,22 @@ async function cargarLogoInstitucional() {
 }
 
 function nombreSeguro(nombre) {
-  return nombre
+  const nombreSanitizado = nombre
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
     .replace(/^_+|_+$/g, '');
+  return nombreSanitizado
+    ? nombreSanitizado.charAt(0).toUpperCase() + nombreSanitizado.slice(1)
+    : nombreSanitizado;
+}
+
+function rangoPorcentaje(valor) {
+  const porcentaje = Number.parseFloat(String(valor).replace(',', '.'));
+  if (!Number.isFinite(porcentaje)) return null;
+  if (porcentaje <= 70) return 'rojo';
+  if (porcentaje <= 90) return 'amarillo';
+  return 'verde';
 }
 
 function descargarBlob(blob, nombreArchivo) {
@@ -76,20 +88,24 @@ function estilizarCeldaExcel(celda, columna, esTotal = false, esPrimera = false)
   };
   aplicarBorde(celda);
 
+  const tieneValor = celda.value !== '' && celda.value !== '—' && celda.value !== '--';
+  const rango = columna.tipo === 'porcentaje' && tieneValor ? rangoPorcentaje(celda.value) : null;
+  if (rango) {
+    celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORES[rango] } };
+    celda.font = { bold: true, color: { argb: rango === 'amarillo' ? COLORES.negro : COLORES.blanco } };
+    return;
+  }
+
   if (esTotal) {
     celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: esPrimera ? COLORES.beige : COLORES.verde } };
     celda.font = { bold: true, color: { argb: esPrimera ? COLORES.negro : COLORES.blanco } };
     return;
   }
 
-  const tieneValor = celda.value !== '' && celda.value !== '—' && celda.value !== '--';
   if (columna.tipo === 'numero' && tieneValor) {
     celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORES.verde } };
     celda.font = { bold: true, color: { argb: COLORES.blanco } };
     if (typeof celda.value === 'number') celda.numFmt = '#,##0';
-  } else if (columna.tipo === 'porcentaje' && tieneValor) {
-    celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORES.amarillo } };
-    celda.font = { bold: true, color: { argb: COLORES.negro } };
   } else if (columna.tipo === 'booleano' && celda.value === 'Sí') {
     celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORES.verde } };
     celda.font = { bold: true, color: { argb: COLORES.blanco } };
@@ -249,19 +265,22 @@ export async function exportarTablaPdf({ titulo, subtitulo, nombreArchivo, colum
       const columna = columnas[dato.column.index];
       const valor = dato.cell.raw;
       const tieneValor = valor !== '' && valor !== '—' && valor !== '--';
+      const rango = columna.tipo === 'porcentaje' && tieneValor ? rangoPorcentaje(valor) : null;
       dato.cell.styles.halign = columna.alineacion || (columna.tipo === 'texto' ? 'left' : 'center');
 
-      if (esTotal) {
+      if (rango) {
+        dato.cell.styles.fillColor = rango === 'rojo'
+          ? [198, 40, 40]
+          : rango === 'amarillo' ? [255, 255, 0] : [36, 94, 80];
+        dato.cell.styles.textColor = rango === 'amarillo' ? [0, 0, 0] : [255, 255, 255];
+        dato.cell.styles.fontStyle = 'bold';
+      } else if (esTotal) {
         dato.cell.styles.fillColor = dato.column.index === 0 ? [225, 203, 170] : [36, 94, 80];
         dato.cell.styles.textColor = dato.column.index === 0 ? [26, 26, 26] : [255, 255, 255];
         dato.cell.styles.fontStyle = 'bold';
       } else if (columna.tipo === 'numero' && tieneValor) {
         dato.cell.styles.fillColor = [36, 94, 80];
         dato.cell.styles.textColor = [255, 255, 255];
-        dato.cell.styles.fontStyle = 'bold';
-      } else if (columna.tipo === 'porcentaje' && tieneValor) {
-        dato.cell.styles.fillColor = [255, 255, 0];
-        dato.cell.styles.textColor = [0, 0, 0];
         dato.cell.styles.fontStyle = 'bold';
       } else if (columna.tipo === 'booleano' && valor === 'Sí') {
         dato.cell.styles.fillColor = [36, 94, 80];
