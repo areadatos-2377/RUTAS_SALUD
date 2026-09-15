@@ -28,6 +28,13 @@
   color: var(--gray-tx);
   white-space: nowrap;
 }
+.jornada-topbar__fecha-presentacion {
+  min-width: 150px;
+}
+.jornada-topbar__fecha-presentacion select {
+  height: 34px;
+  padding: 0 8px;
+}
 
 .jornada-controles {
   display: flex;
