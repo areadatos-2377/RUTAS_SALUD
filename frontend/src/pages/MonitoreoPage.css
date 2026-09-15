@@ -10,6 +10,8 @@
   text-align: center;
 }
 .monitor-topbar h2 { width: 100%; }
+.monitor-page--primer .monitor-topbar h2 { color: var(--verde-d); }
+.monitor-page--segundo .monitor-topbar h2 { color: var(--guinda-d); }
 .monitor-filtros {
   position: sticky;
   top: 46px;
@@ -38,6 +40,11 @@
 }
 .monitor-multiselect { min-width: 0; }
 .monitor-multiselect__label { color: #3a3733; font-size: 12px; font-weight: 700; }
+.monitor-page--primer .monitor-filtros .field > label,
+.monitor-page--primer .monitor-multiselect__label { color: var(--verde-d); }
+.monitor-page--segundo .monitor-filtros { border-left-color: var(--guinda); }
+.monitor-page--segundo .monitor-filtros .field > label,
+.monitor-page--segundo .monitor-multiselect__label { color: var(--guinda-d); }
 .monitor-multiselect details { position: relative; }
 .monitor-multiselect summary {
   width: 100%;
@@ -157,6 +164,9 @@
 .monitor-apartado[open] > summary { border-bottom: 1px solid var(--border); }
 .monitor-apartado__numero { color: var(--dorado); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
 .monitor-apartado__titulo { color: var(--verde-d); font-size: 12px; font-weight: 800; }
+.monitor-page--primer .monitor-apartado__numero { color: var(--verde); }
+.monitor-page--segundo .monitor-apartado__numero,
+.monitor-page--segundo .monitor-apartado__titulo { color: var(--guinda-d); }
 .monitor-apartado__detalle { color: var(--gray-tx); font-size: 11px; }
 .monitor-apartado__flecha { color: var(--gray-tx); font-size: 18px; transition: transform 0.15s ease; }
 .monitor-apartado[open] .monitor-apartado__flecha { transform: rotate(180deg); }
@@ -165,6 +175,8 @@
 .monitor-tabla-resumen table { min-width: 650px; }
 .monitor-tabla-resumen thead, .monitor-lista-clues thead { position: sticky; top: 0; z-index: 1; }
 .monitor-tabla-resumen th { background: var(--verde); color: #fff; text-align: center; }
+.monitor-page--segundo .monitor-tabla-resumen th,
+.monitor-page--segundo .monitor-tabla-evidencia th { background: var(--guinda); }
 .monitor-tabla-resumen td { text-align: center; }
 .monitor-tabla-resumen tbody tr:nth-child(even) { background: #faf7f1; }
 .monitor-dato--verde { color: #00843d; font-weight: 800; }
@@ -305,6 +317,7 @@
 .monitor-historico__diferencia { color: var(--gray-tx); font-weight: 700; }
 .monitor-historico__diferencia.positiva { color: #00843d; }
 .monitor-historico__diferencia.negativa { color: #a3203d; }
+.monitor-historico__total td { background: #f1e4d0; font-weight: 800; border-top: 2px solid var(--dorado); }
 .monitor-evidencia__filtros { display: flex; align-items: flex-end; justify-content: flex-end; gap: 10px; margin-bottom: 14px; }
 .monitor-evidencia__filtros .field { width: min(420px, 100%); }
 .monitor-evidencia__busqueda { min-height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--gray-tx); background: #fff; }
@@ -335,8 +348,13 @@
 .monitor-matriz-picking th:last-child, .monitor-matriz-picking td:last-child { position: sticky; right: 0; z-index: 1; min-width: 110px; background: var(--paper); box-shadow: -1px 0 0 var(--border); text-align: center; }
 .monitor-matriz-picking thead th:last-child { z-index: 4; background: #fcfbf8; }
 .monitor-picking__dia { width: 88px; min-width: 88px; max-width: 88px; text-align: center; }
-.monitor-picking__indicador { display: inline-grid; place-items: center; color: #c8cecc; opacity: 0.35; }
-.monitor-picking__indicador.activo { color: var(--verde); opacity: 1; }
+.monitor-picking__indicador { display: inline-grid; place-items: center; padding: 2px; border: 0; background: transparent; color: #c8cecc; opacity: 0.35; }
+.monitor-picking__indicador.activo { color: var(--verde); opacity: 1; cursor: pointer; }
+.monitor-picking__indicador.activo:hover { background: var(--verde-pale-bg); border-radius: 3px; }
+.monitor-page--segundo .monitor-picking__indicador.activo,
+.monitor-page--segundo .monitor-picking__dias-total { color: var(--guinda-d); }
+.monitor-page--segundo .monitor-picking__indicador.activo:hover { background: var(--guinda-pale-bg); }
+.monitor-page--segundo .monitor-matriz-picking th { color: var(--guinda-d); }
 .monitor-picking__indicador + .monitor-picking__indicador { margin-left: 5px; }
 .monitor-picking__indicador .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .monitor-picking__dias-total { font-weight: 800; color: var(--verde-d); }

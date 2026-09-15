@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet, Presentation } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { useAuth, ROLES } from '../auth/AuthContext';
@@ -312,7 +312,12 @@ export default function JornadaDetallePage() {
           }
           return copia;
         });
-        setAutoSeleccionando(false);
+      })
+      .catch(() => {
+        if (!cancelado) setError('No se pudieron seleccionar automáticamente las fotos.');
+      })
+      .finally(() => {
+        if (!cancelado) setAutoSeleccionando(false);
       });
 
     return () => { cancelado = true; };
@@ -561,6 +566,14 @@ export default function JornadaDetallePage() {
                     <span aria-hidden="true">▾</span>
                   </summary>
                   <div className="jornada-topbar__regiones-opciones">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={regionesSeleccionadas.size === 0}
+                        onChange={() => setRegionesSeleccionadas(new Set())}
+                      />
+                      <span>Todas las regiones</span>
+                    </label>
                     {ordenRegiones().map((region) => (
                       <label key={region}>
                         <input
@@ -597,7 +610,8 @@ export default function JornadaDetallePage() {
               </span>
             )}
             {modoSeleccion && fotosParaGenerar.length > 0 && (
-              <button className="btn-primary" onClick={onGenerarPresentacion} disabled={generandoPresentacion}>
+              <button className="jornada-presentacion-btn" onClick={onGenerarPresentacion} disabled={generandoPresentacion}>
+                <Presentation size={17} aria-hidden="true" />
                 {generandoPresentacion
                   ? presentacionEnCurso && presentacionEnCurso.procesadas > 0
                     ? `Generando… (${presentacionEnCurso.procesadas}/${presentacionEnCurso.total})`
@@ -605,7 +619,11 @@ export default function JornadaDetallePage() {
                   : 'Generar presentación'}
               </button>
             )}
-            <button className="btn-ghost" onClick={() => setModoSeleccion((actual) => !actual)}>
+            <button
+              className={modoSeleccion ? 'btn-ghost' : 'jornada-presentacion-btn'}
+              onClick={() => setModoSeleccion((actual) => !actual)}
+            >
+              {!modoSeleccion && <Presentation size={17} aria-hidden="true" />}
               {modoSeleccion ? 'Cancelar selección' : 'Generar presentación'}
             </button>
           </div>

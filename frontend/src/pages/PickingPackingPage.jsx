@@ -56,7 +56,7 @@ export default function PickingPackingPage() {
               <tr><td colSpan={7} className="tabla-vacia">Todavía no hay distribuciones.</td></tr>
             )}
             {jornadas?.map((j) => (
-              <tr key={j.id}>
+              <tr key={j.id} className={`distribucion-fila distribucion-fila--${j.categoria === 'primer_nivel' ? 'primer' : 'segundo'}`}>
                 <td className="nombre">{j.nombre}</td>
                 <td>{TIPO_LABEL[j.tipo] || j.tipo}</td>
                 <td>{CATEGORIA_LABEL[j.categoria] || j.categoria}</td>

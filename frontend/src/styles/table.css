@@ -70,6 +70,18 @@ tbody tr:last-child td {
 tbody tr:hover {
   background: #fcfbf8;
 }
+.distribucion-fila--primer td {
+  background: #e7f4e8;
+}
+.distribucion-fila--primer:hover td {
+  background: #dcedde;
+}
+.distribucion-fila--segundo td {
+  background: #fde8e7;
+}
+.distribucion-fila--segundo:hover td {
+  background: #fbd9d7;
+}
 .nombre {
   font-weight: 700;
 }
