@@ -10,6 +10,53 @@ que realmente pasaba) → **Solución** (qué se cambió) → **Cómo se detect�
 
 ---
 
+## 2026-09-17 — Monitoreo y Seguimiento lento al usar los selectores
+
+**Síntoma:** Cambiar cualquier selector en "Monitoreo y Seguimiento" (nivel,
+distribución, entidad) se sentía lento, sobre todo en jornadas con muchas
+unidades precargadas.
+
+**Causa raíz:** Dos problemas juntos en `JornadaViewSet.monitoreo()`:
+1. Los resúmenes (`resumen`/`entidades`/`fechas`) se calculaban recorriendo
+   cada `ProgramacionVisita` de la jornada en Python y sumando a mano, en
+   vez de agregación de base de datos — con una jornada de ~9,500 unidades
+   eso instanciaba ~28,000 objetos de Django solo para sacar unos cuantos
+   totales.
+2. La respuesta mandaba **siempre** la lista completa y sin paginar de
+   todas las unidades (`lista_clues`) — 5.3 MB de JSON en cada carga de la
+   pantalla, aunque el usuario nunca llegara a abrir las tablas de detalle
+   ("LISTA DE CLUES", "Evidencia por unidad médica"). Del lado del
+   navegador, esas tablas se pintaban completas, sin paginar ni virtualizar
+   (miles de filas directo al DOM).
+
+No era un problema de N+1 queries — la vista ya hacía solo 10 consultas en
+total gracias a `select_related`/`prefetch_related`.
+
+**Solución:** `resumen`/`entidades`/`fechas` se recalculan con
+`.aggregate()`/`.annotate()` de Django (`Count`/`Sum` con
+`filter=Q(...)` para las condiciones), mismo patrón que ya usaba
+`conteos_actuales`/`conteos_anteriores` en la misma vista. `lista_clues`
+se separó a una acción nueva y paginada, `GET
+/api/jornadas/:id/monitoreo-detalle/` (50 filas por página, con filtros de
+entidad/tipo/búsqueda) — el frontend (`MonitoreoPage.jsx`) solo la pide
+cuando el usuario abre esas tablas, y la búsqueda se manda al servidor con
+*debounce* (~350ms) en vez de filtrar en memoria. Exportar a Excel/PDF
+sigue trayendo todo lo que coincide con los filtros, pidiendo todas las
+páginas aparte al momento de descargar.
+
+Medido con la jornada más grande disponible en desarrollo local (9,460
+unidades): 0.5s → 0.04s (tibio), 5.3 MB → 15.7 KB de respuesta principal.
+
+**Cómo se detectó:** Reportado por el usuario ("se siente lento al usar
+los selectores"). Confirmado con `cProfile` contra esa misma jornada — el
+perfil mostró que el costo real estaba en instanciar objetos de Django de
+más (`Model.__init__`/`from_db`), no en el número de queries. Antes de
+implementar el arreglo se guardó la respuesta vieja como línea base y se
+comparó automáticamente contra la nueva para confirmar que los números
+(resumen, por entidad, por fecha, histórico) quedaran idénticos.
+
+---
+
 ## 2026-08-30 — "Tu sesión expiró" al hacer login en producción (causa raíz real)
 
 **Síntoma:** Al iniciar sesión en producción con credenciales correctas,
