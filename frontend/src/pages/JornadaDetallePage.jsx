@@ -553,7 +553,7 @@ export default function JornadaDetallePage() {
             <p className="jornada-meta jornada-meta--cerrada">
               {usuario?.rol === ROLES.SUPER_ADMIN
                 ? 'Esta distribución está cerrada — como super_admin, sigues pudiendo editar y eliminar lo capturado.'
-                : 'Esta distribución está cerrada — ya no se puede editar ni eliminar lo capturado, solo cargar evidencia.'}
+                : 'La distribución está cerrada. NO se puede editar ni eliminar lo capturado. Únicamente se puede cargar evidencia'}
             </p>
           )}
         </div>
