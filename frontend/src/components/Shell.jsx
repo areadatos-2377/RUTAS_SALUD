@@ -137,11 +137,11 @@ export default function Shell() {
           {usuario?.rol !== ROLES.VISOR && (
             <>
               <div className="nav-section">Programación</div>
+              <NavLink to="/jornadas" className="nav-item">
+                {ICONOS.jornadas} Programación/Distribución
+              </NavLink>
               <NavLink to="/picking-packing" className="nav-item">
                 {ICONOS.pickingPacking} Picking & Packing
-              </NavLink>
-              <NavLink to="/jornadas" className="nav-item">
-                {ICONOS.jornadas} Distribuciones
               </NavLink>
               {/* Pestana "Evidencia" oculta para todos los roles (a peticion
                   del usuario) -- la ruta /evidencia sigue registrada en
