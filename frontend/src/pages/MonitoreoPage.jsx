@@ -653,6 +653,12 @@ export default function MonitoreoPage() {
                     ) : '—'}</td>
                   </tr>
                 ))}
+                <tr className="monitor-historico__total">
+                  <td className="nombre">Total</td>
+                  <td>{numero(resumen.registros)}</td>
+                  <td>{numero(resumen.atendidas)}</td>
+                  <td>{resumen.avance_porcentaje}%</td>
+                </tr>
               </tbody></table></div>
             </Apartado>
 
