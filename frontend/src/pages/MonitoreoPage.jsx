@@ -711,7 +711,55 @@ export default function MonitoreoPage() {
               </div>
             </Apartado>
 
-            <Apartado numeroOrden="04" titulo="HISTÓRICO DE PROGRAMACIÓN" detalle={`${historico.entidades.length} estados`} abierto={apartadoAbierto === '04'} onAlternar={() => alternarApartado('04')}>
+            <Apartado numeroOrden="04" titulo="AVANCE PICKING Y PACKING" detalle={`${datos.picking.dias_evidencia} días con evidencia`} abierto={apartadoAbierto === '04'} onAlternar={() => alternarApartado('04')}>
+              {puedeDescargarChecklist && (
+                <div className="monitor-picking__acciones">
+                  <button className="btn-ghost" type="button" onClick={onGenerarChecklist} disabled={generandoChecklist}>
+                    <Download size={15} aria-hidden="true" />
+                    {generandoChecklist ? 'Generando…' : 'Descargar checklist'}
+                  </button>
+                </div>
+              )}
+              <div className="tablewrap monitor-matriz-picking"><table><thead><tr><th>Entidad</th>{diasPicking.map((dia) => <th key={dia} className="monitor-picking__dia">{etiquetaDia(dia)}</th>)}<th>Días de evidencia</th></tr></thead><tbody>
+                {datos.entidades.map((fila) => {
+                  const porDia = Object.fromEntries(fila.picking_por_dia.map((dato) => [dato.fecha, dato]));
+                  return <tr key={fila.id}><td className="nombre">{fila.entidad}</td>{diasPicking.map((dia) => {
+                    const marcas = porDia[dia] || { foto: false, video: false };
+                    return <td key={dia} className="monitor-picking__dia">{marcas.foto ? <button type="button" className="monitor-picking__indicador activo" title="Ver foto" aria-label={`Ver foto de ${fila.entidad} del ${dia}`} onClick={() => setVistaPicking({ entidad: { id: fila.id, nombre: fila.entidad }, fecha: dia, tipo: 'foto' })}><Image size={14} aria-hidden="true" /></button> : <span className="monitor-picking__indicador" title="Falta foto"><Image size={14} aria-hidden="true" /><span className="sr-only">Falta foto</span></span>}{marcas.video ? <button type="button" className="monitor-picking__indicador activo" title="Ver video" aria-label={`Ver video de ${fila.entidad} del ${dia}`} onClick={() => setVistaPicking({ entidad: { id: fila.id, nombre: fila.entidad }, fecha: dia, tipo: 'video' })}><Film size={14} aria-hidden="true" /></button> : <span className="monitor-picking__indicador" title="Falta video"><Film size={14} aria-hidden="true" /><span className="sr-only">Falta video</span></span>}</td>;
+                  })}<td className="monitor-picking__dias-total">{fila.picking_dias_evidencia || '—'}</td></tr>;
+                })}
+              </tbody></table></div>
+            </Apartado>
+
+            <Apartado numeroOrden="05" titulo="EVIDENCIA POR UNIDAD MÉDICA" detalle={resultadoEvidencia ? `${numero(resultadoEvidencia.count)} resultado${resultadoEvidencia.count === 1 ? '' : 's'}` : `${numero(resumen.registros)} unidades`} abierto={apartadoAbierto === '05'} onAlternar={() => alternarApartado('05')}>
+              <div className="monitor-evidencia__filtros">
+                <div className="field">
+                  <label htmlFor="monitor-evidencia-clues">CLUES</label>
+                  <label className="monitor-evidencia__busqueda">
+                    <Search size={15} aria-hidden="true" />
+                    <input id="monitor-evidencia-clues" type="search" placeholder="Buscar por CLUES o nombre de la unidad" value={busquedaEvidencia} onChange={(e) => { setBusquedaEvidencia(e.target.value); setPaginaEvidencia(1); }} />
+                  </label>
+                </div>
+                <DescargarTabla onDescargar={(formato) => onDescargarTabla('evidencia', formato)} />
+              </div>
+              <div className="tablewrap monitor-tabla-evidencia"><table><thead><tr><th>CLUES</th><th>Nombre de la unidad</th><th>Entidad</th><th>Foto</th><th>Video</th><th>Nota</th><th>Evidencia completa</th><th>Avance</th></tr></thead><tbody>
+                {(resultadoEvidencia?.results || []).map((fila) => <tr key={fila.id}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.entidad}</td><td><MarcaEvidencia presente={fila.evidencia_foto} etiqueta="Foto" onAbrir={() => abrirEvidencia(fila, 'imagen')} /></td><td><MarcaEvidencia presente={fila.evidencia_video} etiqueta="Video" onAbrir={() => abrirEvidencia(fila, 'video')} /></td><td><MarcaEvidencia presente={fila.evidencia_nota} etiqueta="Nota" onAbrir={() => abrirEvidencia(fila, 'documento')} /></td><td><MarcaEvidencia presente={fila.evidencia_completa} etiqueta="Evidencia completa" /></td><td><span className={`monitor-avance-evidencia ${fila.evidencia_completa ? 'completo' : ''}`}>{fila.evidencia_avance}%</span></td></tr>)}
+                {cargandoEvidencia && <tr><td colSpan={8} className="tabla-vacia">Cargando…</td></tr>}
+                {!cargandoEvidencia && resultadoEvidencia && resultadoEvidencia.results.length === 0 && <tr><td colSpan={8} className="tabla-vacia">No hay unidades que coincidan.</td></tr>}
+              </tbody></table>
+              {resultadoEvidencia && resultadoEvidencia.count > 0 && (
+                <div className="tfoot">
+                  <span>{numero(resultadoEvidencia.count)} unidades · página {paginaEvidencia} de {totalPaginasEvidencia}</span>
+                  <div className="pages">
+                    <button className="btn-ghost" disabled={!resultadoEvidencia.previous} onClick={() => setPaginaEvidencia((p) => p - 1)}>← Anterior</button>
+                    <button className="btn-ghost" disabled={!resultadoEvidencia.next} onClick={() => setPaginaEvidencia((p) => p + 1)}>Siguiente →</button>
+                  </div>
+                </div>
+              )}
+              </div>
+            </Apartado>
+
+            <Apartado numeroOrden="06" titulo="HISTÓRICO DE PROGRAMACIÓN" detalle={`${historico.entidades.length} estados`} abierto={apartadoAbierto === '06'} onAlternar={() => alternarApartado('06')}>
               <div className="tablewrap monitor-tabla-resumen monitor-tabla-historico">
                 <table>
                   <thead><tr>
@@ -748,54 +796,6 @@ export default function MonitoreoPage() {
                     {historico.entidades.length === 0 && <tr><td colSpan={4} className="tabla-vacia">No hay estados para comparar.</td></tr>}
                   </tbody>
                 </table>
-              </div>
-            </Apartado>
-
-            <Apartado numeroOrden="05" titulo="AVANCE PICKING Y PACKING" detalle={`${datos.picking.dias_evidencia} días con evidencia`} abierto={apartadoAbierto === '05'} onAlternar={() => alternarApartado('05')}>
-              {puedeDescargarChecklist && (
-                <div className="monitor-picking__acciones">
-                  <button className="btn-ghost" type="button" onClick={onGenerarChecklist} disabled={generandoChecklist}>
-                    <Download size={15} aria-hidden="true" />
-                    {generandoChecklist ? 'Generando…' : 'Descargar checklist'}
-                  </button>
-                </div>
-              )}
-              <div className="tablewrap monitor-matriz-picking"><table><thead><tr><th>Entidad</th>{diasPicking.map((dia) => <th key={dia} className="monitor-picking__dia">{etiquetaDia(dia)}</th>)}<th>Días de evidencia</th></tr></thead><tbody>
-                {datos.entidades.map((fila) => {
-                  const porDia = Object.fromEntries(fila.picking_por_dia.map((dato) => [dato.fecha, dato]));
-                  return <tr key={fila.id}><td className="nombre">{fila.entidad}</td>{diasPicking.map((dia) => {
-                    const marcas = porDia[dia] || { foto: false, video: false };
-                    return <td key={dia} className="monitor-picking__dia">{marcas.foto ? <button type="button" className="monitor-picking__indicador activo" title="Ver foto" aria-label={`Ver foto de ${fila.entidad} del ${dia}`} onClick={() => setVistaPicking({ entidad: { id: fila.id, nombre: fila.entidad }, fecha: dia, tipo: 'foto' })}><Image size={14} aria-hidden="true" /></button> : <span className="monitor-picking__indicador" title="Falta foto"><Image size={14} aria-hidden="true" /><span className="sr-only">Falta foto</span></span>}{marcas.video ? <button type="button" className="monitor-picking__indicador activo" title="Ver video" aria-label={`Ver video de ${fila.entidad} del ${dia}`} onClick={() => setVistaPicking({ entidad: { id: fila.id, nombre: fila.entidad }, fecha: dia, tipo: 'video' })}><Film size={14} aria-hidden="true" /></button> : <span className="monitor-picking__indicador" title="Falta video"><Film size={14} aria-hidden="true" /><span className="sr-only">Falta video</span></span>}</td>;
-                  })}<td className="monitor-picking__dias-total">{fila.picking_dias_evidencia || '—'}</td></tr>;
-                })}
-              </tbody></table></div>
-            </Apartado>
-
-            <Apartado numeroOrden="06" titulo="EVIDENCIA POR UNIDAD MÉDICA" detalle={resultadoEvidencia ? `${numero(resultadoEvidencia.count)} resultado${resultadoEvidencia.count === 1 ? '' : 's'}` : `${numero(resumen.registros)} unidades`} abierto={apartadoAbierto === '06'} onAlternar={() => alternarApartado('06')}>
-              <div className="monitor-evidencia__filtros">
-                <div className="field">
-                  <label htmlFor="monitor-evidencia-clues">CLUES</label>
-                  <label className="monitor-evidencia__busqueda">
-                    <Search size={15} aria-hidden="true" />
-                    <input id="monitor-evidencia-clues" type="search" placeholder="Buscar por CLUES o nombre de la unidad" value={busquedaEvidencia} onChange={(e) => { setBusquedaEvidencia(e.target.value); setPaginaEvidencia(1); }} />
-                  </label>
-                </div>
-                <DescargarTabla onDescargar={(formato) => onDescargarTabla('evidencia', formato)} />
-              </div>
-              <div className="tablewrap monitor-tabla-evidencia"><table><thead><tr><th>CLUES</th><th>Nombre de la unidad</th><th>Entidad</th><th>Foto</th><th>Video</th><th>Nota</th><th>Evidencia completa</th><th>Avance</th></tr></thead><tbody>
-                {(resultadoEvidencia?.results || []).map((fila) => <tr key={fila.id}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.entidad}</td><td><MarcaEvidencia presente={fila.evidencia_foto} etiqueta="Foto" onAbrir={() => abrirEvidencia(fila, 'imagen')} /></td><td><MarcaEvidencia presente={fila.evidencia_video} etiqueta="Video" onAbrir={() => abrirEvidencia(fila, 'video')} /></td><td><MarcaEvidencia presente={fila.evidencia_nota} etiqueta="Nota" onAbrir={() => abrirEvidencia(fila, 'documento')} /></td><td><MarcaEvidencia presente={fila.evidencia_completa} etiqueta="Evidencia completa" /></td><td><span className={`monitor-avance-evidencia ${fila.evidencia_completa ? 'completo' : ''}`}>{fila.evidencia_avance}%</span></td></tr>)}
-                {cargandoEvidencia && <tr><td colSpan={8} className="tabla-vacia">Cargando…</td></tr>}
-                {!cargandoEvidencia && resultadoEvidencia && resultadoEvidencia.results.length === 0 && <tr><td colSpan={8} className="tabla-vacia">No hay unidades que coincidan.</td></tr>}
-              </tbody></table>
-              {resultadoEvidencia && resultadoEvidencia.count > 0 && (
-                <div className="tfoot">
-                  <span>{numero(resultadoEvidencia.count)} unidades · página {paginaEvidencia} de {totalPaginasEvidencia}</span>
-                  <div className="pages">
-                    <button className="btn-ghost" disabled={!resultadoEvidencia.previous} onClick={() => setPaginaEvidencia((p) => p - 1)}>← Anterior</button>
-                    <button className="btn-ghost" disabled={!resultadoEvidencia.next} onClick={() => setPaginaEvidencia((p) => p + 1)}>Siguiente →</button>
-                  </div>
-                </div>
-              )}
               </div>
             </Apartado>
 
