@@ -7,6 +7,7 @@ from entregas.views import (
     EntregaViewSet,
     EvidenciaArchivoViewSet,
     GenerarPresentacionView,
+    NotificacionEvidenciaViewSet,
     PresentacionJobEstadoView,
 )
 from picking_packing.views import EvidenciaViewSet as PickingPackingEvidenciaViewSet
@@ -32,6 +33,7 @@ router.register("usuarios", UsuarioViewSet)
 router.register("entregas", EntregaViewSet)
 router.register("evidencias", EvidenciaArchivoViewSet)
 router.register("picking-packing/evidencias", PickingPackingEvidenciaViewSet, basename="picking-packing-evidencia")
+router.register("notificaciones-evidencia", NotificacionEvidenciaViewSet, basename="notificacion-evidencia")
 
 urlpatterns = [
     path("admin/", admin.site.urls),

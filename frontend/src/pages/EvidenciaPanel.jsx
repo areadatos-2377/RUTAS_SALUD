@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client';
+import { useAuth, ROLES } from '../auth/AuthContext';
 import { comprimirImagen } from '../utils/comprimirImagen';
 import './EvidenciaPanel.css';
 
@@ -14,9 +15,24 @@ const CATEGORIAS = [
 ];
 
 export default function EvidenciaPanel({ visita, onCerrar }) {
+  const { usuario } = useAuth();
+  // Solo Nacional/Administrador marcan evidencia con problema -- el
+  // Capturista es quien la sube, no tiene sentido que se la marque a si
+  // mismo (ver plan 2026-09-15-notificaciones-evidencia).
+  const puedeMarcarProblema = usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
+  // admin_nacional puede abrir este panel (ver puedeVerEvidencia en
+  // JornadaDetallePage.jsx) pero solo para ver/marcar -- el backend ya
+  // rechaza (403) que suba o borre evidencia (PuedeGestionarProgramacion:
+  // solo usuario_entidad/super_admin escriben ahi), asi que ni se muestran
+  // esas acciones para no ofrecer algo que va a fallar.
+  const puedeEditarEvidencia = usuario?.rol === ROLES.USUARIO_ENTIDAD || usuario?.rol === ROLES.SUPER_ADMIN;
+
   const [entrega, setEntrega] = useState(null);
   const [error, setError] = useState(null);
   const [subiendoCategoria, setSubiendoCategoria] = useState(null);
+  const [marcandoProblemaId, setMarcandoProblemaId] = useState(null);
+  const [comentarioProblema, setComentarioProblema] = useState('');
+  const [enviandoProblema, setEnviandoProblema] = useState(false);
 
   useEffect(() => {
     api.post('/api/entregas/', { programacion_visita: visita.id })
@@ -60,6 +76,29 @@ export default function EvidenciaPanel({ visita, onCerrar }) {
       }));
     } catch {
       setError('No se pudo eliminar la evidencia.');
+    }
+  }
+
+  async function onEnviarProblema(evidenciaId) {
+    const comentario = comentarioProblema.trim();
+    if (!comentario) return;
+    setEnviandoProblema(true);
+    setError(null);
+    try {
+      await api.post('/api/notificaciones-evidencia/', { evidencia_id: evidenciaId, comentario });
+      setEntrega((actual) => ({
+        ...actual,
+        evidencias: actual.evidencias.map((ev) => (
+          ev.id === evidenciaId ? { ...ev, tiene_notificacion_abierta: true } : ev
+        )),
+      }));
+      setMarcandoProblemaId(null);
+      setComentarioProblema('');
+    } catch (err) {
+      const detalle = err instanceof ApiError && err.data ? err.data.detail : null;
+      setError(detalle || 'No se pudo marcar el problema.');
+    } finally {
+      setEnviandoProblema(false);
     }
   }
 
@@ -111,25 +150,73 @@ export default function EvidenciaPanel({ visita, onCerrar }) {
                     )}
                     {evidenciasCategoria.map((ev) => (
                       <div key={ev.id} className="evidencia-item">
-                        <div className="evidencia-item__info">
-                          <a href={ev.url_descarga} target="_blank" rel="noreferrer">{ev.nombre_original}</a>
-                          <span>{new Date(ev.creado_en).toLocaleString('es-MX')}</span>
+                        <div className="evidencia-item__fila">
+                          <div className="evidencia-item__info">
+                            <a href={ev.url_descarga} target="_blank" rel="noreferrer">{ev.nombre_original}</a>
+                            <span>{new Date(ev.creado_en).toLocaleString('es-MX')}</span>
+                          </div>
+                          <div className="evidencia-item__acciones">
+                            {puedeMarcarProblema && (
+                              ev.tiene_notificacion_abierta ? (
+                                <span className="evidencia-item__notificado">Notificado</span>
+                              ) : marcandoProblemaId !== ev.id && (
+                                <button
+                                  className="btn-ghost"
+                                  onClick={() => { setMarcandoProblemaId(ev.id); setComentarioProblema(''); }}
+                                >
+                                  Marcar problema
+                                </button>
+                              )
+                            )}
+                            {puedeEditarEvidencia && (
+                              <button className="btn-ghost" onClick={() => onEliminarEvidencia(ev.id)}>Eliminar</button>
+                            )}
+                          </div>
                         </div>
-                        <button className="btn-ghost" onClick={() => onEliminarEvidencia(ev.id)}>Eliminar</button>
+                        {marcandoProblemaId === ev.id && (
+                          <div className="evidencia-item__problema">
+                            <textarea
+                              rows={2}
+                              placeholder="Describe el problema (ej. foto movida, documento ilegible)…"
+                              value={comentarioProblema}
+                              onChange={(e) => setComentarioProblema(e.target.value)}
+                              disabled={enviandoProblema}
+                              autoFocus
+                            />
+                            <div className="evidencia-item__problema-acciones">
+                              <button
+                                className="btn-primary"
+                                onClick={() => onEnviarProblema(ev.id)}
+                                disabled={enviandoProblema || !comentarioProblema.trim()}
+                              >
+                                {enviandoProblema ? 'Enviando…' : 'Enviar'}
+                              </button>
+                              <button
+                                className="btn-ghost"
+                                onClick={() => setMarcandoProblemaId(null)}
+                                disabled={enviandoProblema}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
 
-                  <div className="evidencia-panel__subir">
-                    <input
-                      type="file"
-                      multiple
-                      accept={categoria.accept}
-                      disabled={subiendo}
-                      onChange={(e) => onSubirArchivos(categoria, e)}
-                    />
-                    {subiendo && <span className="evidencia-panel__subiendo">Subiendo…</span>}
-                  </div>
+                  {puedeEditarEvidencia && (
+                    <div className="evidencia-panel__subir">
+                      <input
+                        type="file"
+                        multiple
+                        accept={categoria.accept}
+                        disabled={subiendo}
+                        onChange={(e) => onSubirArchivos(categoria, e)}
+                      />
+                      {subiendo && <span className="evidencia-panel__subiendo">Subiendo…</span>}
+                    </div>
+                  )}
                 </div>
               );
             })}

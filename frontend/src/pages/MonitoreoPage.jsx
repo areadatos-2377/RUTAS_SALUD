@@ -230,14 +230,28 @@ export default function MonitoreoPage() {
   const [entidadesDisponibles, setEntidadesDisponibles] = useState([]);
   const [datos, setDatos] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+  const [busquedaDebounced, setBusquedaDebounced] = useState('');
   const [filtroLista, setFiltroLista] = useState(null);
   const [busquedaEvidencia, setBusquedaEvidencia] = useState('');
+  const [busquedaEvidenciaDebounced, setBusquedaEvidenciaDebounced] = useState('');
   const [apartadoAbierto, setApartadoAbierto] = useState('01');
   const [generandoChecklist, setGenerandoChecklist] = useState(false);
   const [vistaRapida, setVistaRapida] = useState(null);
   const [vistaPicking, setVistaPicking] = useState(null);
   const [error, setError] = useState(null);
   const listaCluesRef = useRef(null);
+
+  // "LISTA DE CLUES" y "EVIDENCIA POR UNIDAD MEDICA" ya no vienen dentro de
+  // /monitoreo/ (ese endpoint mandaba SIEMPRE las miles de filas de la
+  // jornada completa, 5+ MB de JSON, aunque nadie abriera estas 2 tablas --
+  // ver plan 2026-09-17-rendimiento-monitoreo). Ahora se piden aparte, en
+  // /monitoreo-detalle/, paginadas y solo cuando su acordeon esta abierto.
+  const [paginaLista, setPaginaLista] = useState(1);
+  const [resultadoLista, setResultadoLista] = useState(null); // {count, next, previous, results}
+  const [cargandoLista, setCargandoLista] = useState(false);
+  const [paginaEvidencia, setPaginaEvidencia] = useState(1);
+  const [resultadoEvidencia, setResultadoEvidencia] = useState(null);
+  const [cargandoEvidencia, setCargandoEvidencia] = useState(false);
 
   useEffect(() => {
     api.getAll('/api/jornadas/')
@@ -270,14 +284,85 @@ export default function MonitoreoPage() {
     return () => { cancelado = true; };
   }, [jornadaId, entidadesSeleccionadas]);
 
+  // Debounce (~350ms) antes de mandar la busqueda al servidor -- una
+  // peticion por tecla saturaria el backend sin necesidad, y la lista solo
+  // necesita quedar al dia un rato despues de que la persona deja de
+  // escribir, no en cada pulsacion.
+  useEffect(() => {
+    const id = setTimeout(() => setBusquedaDebounced(busqueda), 350);
+    return () => clearTimeout(id);
+  }, [busqueda]);
+  useEffect(() => {
+    const id = setTimeout(() => setBusquedaEvidenciaDebounced(busquedaEvidencia), 350);
+    return () => clearTimeout(id);
+  }, [busquedaEvidencia]);
+
+  // Mismos filtros para la carga paginada en pantalla y para la descarga
+  // completa (ver onDescargarTabla) -- una sola fuente de verdad para que
+  // nunca puedan desincronizarse.
+  function paramsListaDetalle(textoBusqueda) {
+    const params = new URLSearchParams();
+    if (filtroLista) {
+      params.set('entidad', filtroLista.entidadId);
+      params.set('tipo', filtroLista.tipo);
+    } else {
+      entidadesSeleccionadas.forEach((entidadId) => params.append('entidad', entidadId));
+    }
+    if (textoBusqueda.trim()) params.set('busqueda', textoBusqueda.trim());
+    return params;
+  }
+  function paramsEvidenciaDetalle(textoBusqueda) {
+    const params = new URLSearchParams();
+    entidadesSeleccionadas.forEach((entidadId) => params.append('entidad', entidadId));
+    if (textoBusqueda.trim()) params.set('busqueda', textoBusqueda.trim());
+    return params;
+  }
+
+  // "LISTA DE CLUES": solo se pide mientras su acordeon esta abierto -- si
+  // el usuario nunca lo abre, nunca se paga el costo de traerla.
+  useEffect(() => {
+    if (!datos || apartadoAbierto !== '03') return;
+    let cancelado = false;
+    setCargandoLista(true);
+    const params = paramsListaDetalle(busquedaDebounced);
+    params.set('page', String(paginaLista));
+    api.get(`/api/jornadas/${jornadaId}/monitoreo-detalle/?${params}`)
+      .then((respuesta) => { if (!cancelado) setResultadoLista(respuesta); })
+      .catch(() => { if (!cancelado) setError('No se pudo cargar la lista de CLUES.'); })
+      .finally(() => { if (!cancelado) setCargandoLista(false); });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datos, jornadaId, apartadoAbierto, paginaLista, filtroLista, busquedaDebounced, entidadesSeleccionadas]);
+
+  // "EVIDENCIA POR UNIDAD MEDICA": mismo criterio, solo mientras esta abierta.
+  useEffect(() => {
+    if (!datos || apartadoAbierto !== '06') return;
+    let cancelado = false;
+    setCargandoEvidencia(true);
+    const params = paramsEvidenciaDetalle(busquedaEvidenciaDebounced);
+    params.set('page', String(paginaEvidencia));
+    api.get(`/api/jornadas/${jornadaId}/monitoreo-detalle/?${params}`)
+      .then((respuesta) => { if (!cancelado) setResultadoEvidencia(respuesta); })
+      .catch(() => { if (!cancelado) setError('No se pudo cargar la evidencia por unidad médica.'); })
+      .finally(() => { if (!cancelado) setCargandoEvidencia(false); });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datos, jornadaId, apartadoAbierto, paginaEvidencia, busquedaEvidenciaDebounced, entidadesSeleccionadas]);
+
   const jornadasDelNivel = (jornadas || []).filter((item) => item.categoria === nivel);
 
   function prepararRecarga() {
     setDatos(null);
     setError(null);
     setBusqueda('');
+    setBusquedaDebounced('');
     setFiltroLista(null);
     setBusquedaEvidencia('');
+    setBusquedaEvidenciaDebounced('');
+    setPaginaLista(1);
+    setResultadoLista(null);
+    setPaginaEvidencia(1);
+    setResultadoEvidencia(null);
   }
 
   function onCambiarNivel(nuevoNivel) {
@@ -323,24 +408,22 @@ export default function MonitoreoPage() {
       etiqueta: `${etiqueta} · ${filaEntidad.entidad}`,
     });
     setBusqueda('');
+    setBusquedaDebounced('');
+    setPaginaLista(1);
     setApartadoAbierto('03');
     requestAnimationFrame(() => {
       listaCluesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
 
-  const listaFiltrada = (datos?.lista_clues || []).filter((fila) => {
-    if (filtroLista && String(fila.entidad_id) !== filtroLista.entidadId) return false;
-    if (filtroLista?.tipo === 'abastecidas' && !fila.entregado) return false;
-    if (filtroLista?.tipo === 'pendientes' && fila.entregado) return false;
-    if (filtroLista?.tipo === 'por_programar' && fila.fecha_programada) return false;
-    const texto = `${fila.clues} ${fila.unidad} ${fila.entidad} ${fila.municipio} ${fila.ruta} ${fila.tipo_unidad_medica} ${fila.quien_recibe} ${fila.telefono} ${fila.correo}`.toLocaleLowerCase('es');
-    return texto.includes(busqueda.trim().toLocaleLowerCase('es'));
-  });
-  const evidenciaFiltrada = (datos?.lista_clues || []).filter((fila) => {
-    const texto = `${fila.clues} ${fila.unidad}`.toLocaleLowerCase('es');
-    return texto.includes(busquedaEvidencia.trim().toLocaleLowerCase('es'));
-  });
+  function quitarFiltroLista() {
+    setFiltroLista(null);
+    setPaginaLista(1);
+  }
+
+  const totalPaginasLista = resultadoLista ? Math.max(1, Math.ceil(resultadoLista.count / 50)) : 1;
+  const totalPaginasEvidencia = resultadoEvidencia
+    ? Math.max(1, Math.ceil(resultadoEvidencia.count / 50)) : 1;
   const resumen = datos?.resumen;
   const esVisor = usuario?.rol === ROLES.VISOR;
   const puedeDescargarChecklist = esVisor || usuario?.rol === ROLES.ADMIN_NACIONAL || usuario?.rol === ROLES.SUPER_ADMIN;
@@ -374,6 +457,22 @@ export default function MonitoreoPage() {
     const subtitulo = `${datos.jornada.nombre} · ${contexto}`.toLocaleUpperCase('es');
     const nivelAtencion = (CATEGORIA_LABEL[datos.jornada.categoria] || datos.jornada.categoria)
       .toLocaleUpperCase('es');
+
+    // "lista"/"evidencia" ya no viven completas en memoria (la tabla en
+    // pantalla solo tiene la pagina actual) -- para exportar TODO lo que
+    // coincide con los filtros de esa tabla, se piden todas las paginas
+    // aparte, con los mismos filtros (ver paramsListaDetalle/
+    // paramsEvidenciaDetalle), justo antes de armar el archivo.
+    let listaCompleta = null;
+    let evidenciaCompleta = null;
+    if (apartado === 'lista') {
+      const params = paramsListaDetalle(busqueda);
+      listaCompleta = await api.getAll(`/api/jornadas/${jornadaId}/monitoreo-detalle/?${params}`);
+    } else if (apartado === 'evidencia') {
+      const params = paramsEvidenciaDetalle(busquedaEvidencia);
+      evidenciaCompleta = await api.getAll(`/api/jornadas/${jornadaId}/monitoreo-detalle/?${params}`);
+    }
+
     const configuraciones = {
       programada: {
         titulo: `ABASTECIMIENTO DE MEDICAMENTO Y MATERIAL DE CURACIÓN A UNIDADES MÉDICAS DE ${nivelAtencion} DE ATENCIÓN`,
@@ -405,7 +504,7 @@ export default function MonitoreoPage() {
         titulo: 'LISTA DE CLUES',
         subtitulo,
         nombreArchivo: `lista_de_clues_${base}`,
-        filas: listaFiltrada,
+        filas: listaCompleta || [],
         columnas: [
           { etiqueta: 'CLUES', valor: 'clues', ancho: 18, tipo: 'texto' },
           { etiqueta: 'UNIDAD MÉDICA', valor: 'unidad', ancho: 42, tipo: 'texto' },
@@ -422,16 +521,16 @@ export default function MonitoreoPage() {
           { etiqueta: 'CORREO', valor: (fila) => fila.correo || '—', ancho: 32, tipo: 'texto' },
         ],
         totales: {
-          claves: sumar(listaFiltrada, 'claves'),
-          piezas_medicamento: sumar(listaFiltrada, 'piezas_medicamento'),
-          piezas_material_curacion: sumar(listaFiltrada, 'piezas_material_curacion'),
+          claves: sumar(listaCompleta || [], 'claves'),
+          piezas_medicamento: sumar(listaCompleta || [], 'piezas_medicamento'),
+          piezas_material_curacion: sumar(listaCompleta || [], 'piezas_material_curacion'),
         },
       },
       evidencia: {
         titulo: 'EVIDENCIA POR UNIDAD MÉDICA',
         subtitulo,
         nombreArchivo: `evidencia_por_unidad_medica_${base}`,
-        filas: evidenciaFiltrada.map((fila) => ({
+        filas: (evidenciaCompleta || []).map((fila) => ({
           ...fila,
           foto: fila.evidencia_foto ? 'Sí' : 'No',
           video: fila.evidencia_video ? 'Sí' : 'No',
@@ -450,12 +549,12 @@ export default function MonitoreoPage() {
           { etiqueta: 'AVANCE', valor: 'avance', ancho: 14, tipo: 'porcentaje' },
         ],
         totales: {
-          foto: evidenciaFiltrada.filter((fila) => fila.evidencia_foto).length,
-          video: evidenciaFiltrada.filter((fila) => fila.evidencia_video).length,
-          nota: evidenciaFiltrada.filter((fila) => fila.evidencia_nota).length,
-          completa: evidenciaFiltrada.filter((fila) => fila.evidencia_completa).length,
-          avance: evidenciaFiltrada.length
-            ? `${Math.round(sumar(evidenciaFiltrada, 'evidencia_avance') / evidenciaFiltrada.length)}%`
+          foto: (evidenciaCompleta || []).filter((fila) => fila.evidencia_foto).length,
+          video: (evidenciaCompleta || []).filter((fila) => fila.evidencia_video).length,
+          nota: (evidenciaCompleta || []).filter((fila) => fila.evidencia_nota).length,
+          completa: (evidenciaCompleta || []).filter((fila) => fila.evidencia_completa).length,
+          avance: (evidenciaCompleta || []).length
+            ? `${Math.round(sumar(evidenciaCompleta, 'evidencia_avance') / evidenciaCompleta.length)}%`
             : '0%',
         },
       },
@@ -584,21 +683,32 @@ export default function MonitoreoPage() {
               </tbody></table></div>
             </Apartado>
 
-            <Apartado apartadoRef={listaCluesRef} numeroOrden="03" titulo="LISTA DE CLUES" detalle={filtroLista ? `${numero(listaFiltrada.length)} resultado${listaFiltrada.length === 1 ? '' : 's'}` : `${numero(resumen.registros)} registros`} abierto={apartadoAbierto === '03'} onAlternar={() => alternarApartado('03')}>
+            <Apartado apartadoRef={listaCluesRef} numeroOrden="03" titulo="LISTA DE CLUES" detalle={resultadoLista ? `${numero(resultadoLista.count)} resultado${resultadoLista.count === 1 ? '' : 's'}` : `${numero(resumen.registros)} registros`} abierto={apartadoAbierto === '03'} onAlternar={() => alternarApartado('03')}>
               <div className="monitor-tabla-herramientas">
                 {filtroLista && (
                   <span className="monitor-lista-filtro">
                     {filtroLista.etiqueta}
-                    <button type="button" aria-label="Quitar filtro de conteo" onClick={() => setFiltroLista(null)}><X size={14} aria-hidden="true" /></button>
+                    <button type="button" aria-label="Quitar filtro de conteo" onClick={quitarFiltroLista}><X size={14} aria-hidden="true" /></button>
                   </span>
                 )}
-                <label className="monitor-busqueda"><Search size={16} aria-hidden="true" /><input type="search" placeholder="Buscar CLUES, unidad, contacto, teléfono o correo" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} /></label>
+                <label className="monitor-busqueda"><Search size={16} aria-hidden="true" /><input type="search" placeholder="Buscar CLUES, unidad, contacto, teléfono o correo" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPaginaLista(1); }} /></label>
                 <DescargarTabla onDescargar={(formato) => onDescargarTabla('lista', formato)} />
               </div>
               <div className="tablewrap monitor-lista-clues"><table><thead><tr><th>CLUES</th><th>Unidad médica</th><th>Tipo de unidad</th><th>Estado</th><th>Municipio</th><th>Ruta</th><th>Fecha programada</th><th>Claves</th><th>Medicamento</th><th>Material curación</th><th>Quién recibe en unidad</th><th>Teléfono</th><th>Correo</th></tr></thead><tbody>
-                {listaFiltrada.map((fila) => <tr key={fila.id} className={!fila.entregado && fila.tiene_evidencia ? 'monitor-fila--alerta' : undefined}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.tipo_unidad_medica || '—'}</td><td>{fila.entidad}</td><td>{fila.municipio || '—'}</td><td>{fila.ruta || '—'}</td><td>{fila.fecha_programada || 'Por programar'}</td><td>{numero(fila.claves)}</td><td>{numero(fila.piezas_medicamento)}</td><td>{numero(fila.piezas_material_curacion)}</td><td>{fila.quien_recibe || '—'}</td><td>{fila.telefono || '—'}</td><td>{fila.correo || '—'}</td></tr>)}
-                {listaFiltrada.length === 0 && <tr><td colSpan={13} className="tabla-vacia">No hay CLUES que coincidan.</td></tr>}
-              </tbody></table></div>
+                {(resultadoLista?.results || []).map((fila) => <tr key={fila.id} className={!fila.entregado && fila.tiene_evidencia ? 'monitor-fila--alerta' : undefined}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.tipo_unidad_medica || '—'}</td><td>{fila.entidad}</td><td>{fila.municipio || '—'}</td><td>{fila.ruta || '—'}</td><td>{fila.fecha_programada || 'Por programar'}</td><td>{numero(fila.claves)}</td><td>{numero(fila.piezas_medicamento)}</td><td>{numero(fila.piezas_material_curacion)}</td><td>{fila.quien_recibe || '—'}</td><td>{fila.telefono || '—'}</td><td>{fila.correo || '—'}</td></tr>)}
+                {cargandoLista && <tr><td colSpan={13} className="tabla-vacia">Cargando…</td></tr>}
+                {!cargandoLista && resultadoLista && resultadoLista.results.length === 0 && <tr><td colSpan={13} className="tabla-vacia">No hay CLUES que coincidan.</td></tr>}
+              </tbody></table>
+              {resultadoLista && resultadoLista.count > 0 && (
+                <div className="tfoot">
+                  <span>{numero(resultadoLista.count)} CLUES · página {paginaLista} de {totalPaginasLista}</span>
+                  <div className="pages">
+                    <button className="btn-ghost" disabled={!resultadoLista.previous} onClick={() => setPaginaLista((p) => p - 1)}>← Anterior</button>
+                    <button className="btn-ghost" disabled={!resultadoLista.next} onClick={() => setPaginaLista((p) => p + 1)}>Siguiente →</button>
+                  </div>
+                </div>
+              )}
+              </div>
             </Apartado>
 
             <Apartado numeroOrden="04" titulo="HISTÓRICO DE PROGRAMACIÓN" detalle={`${historico.entidades.length} estados`} abierto={apartadoAbierto === '04'} onAlternar={() => alternarApartado('04')}>
@@ -661,21 +771,32 @@ export default function MonitoreoPage() {
               </tbody></table></div>
             </Apartado>
 
-            <Apartado numeroOrden="06" titulo="EVIDENCIA POR UNIDAD MÉDICA" detalle={`${numero(resumen.registros)} unidades`} abierto={apartadoAbierto === '06'} onAlternar={() => alternarApartado('06')}>
+            <Apartado numeroOrden="06" titulo="EVIDENCIA POR UNIDAD MÉDICA" detalle={resultadoEvidencia ? `${numero(resultadoEvidencia.count)} resultado${resultadoEvidencia.count === 1 ? '' : 's'}` : `${numero(resumen.registros)} unidades`} abierto={apartadoAbierto === '06'} onAlternar={() => alternarApartado('06')}>
               <div className="monitor-evidencia__filtros">
                 <div className="field">
                   <label htmlFor="monitor-evidencia-clues">CLUES</label>
                   <label className="monitor-evidencia__busqueda">
                     <Search size={15} aria-hidden="true" />
-                    <input id="monitor-evidencia-clues" type="search" placeholder="Buscar por CLUES o nombre de la unidad" value={busquedaEvidencia} onChange={(e) => setBusquedaEvidencia(e.target.value)} />
+                    <input id="monitor-evidencia-clues" type="search" placeholder="Buscar por CLUES o nombre de la unidad" value={busquedaEvidencia} onChange={(e) => { setBusquedaEvidencia(e.target.value); setPaginaEvidencia(1); }} />
                   </label>
                 </div>
                 <DescargarTabla onDescargar={(formato) => onDescargarTabla('evidencia', formato)} />
               </div>
               <div className="tablewrap monitor-tabla-evidencia"><table><thead><tr><th>CLUES</th><th>Nombre de la unidad</th><th>Entidad</th><th>Foto</th><th>Video</th><th>Nota</th><th>Evidencia completa</th><th>Avance</th></tr></thead><tbody>
-                {evidenciaFiltrada.map((fila) => <tr key={fila.id}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.entidad}</td><td><MarcaEvidencia presente={fila.evidencia_foto} etiqueta="Foto" onAbrir={() => abrirEvidencia(fila, 'imagen')} /></td><td><MarcaEvidencia presente={fila.evidencia_video} etiqueta="Video" onAbrir={() => abrirEvidencia(fila, 'video')} /></td><td><MarcaEvidencia presente={fila.evidencia_nota} etiqueta="Nota" onAbrir={() => abrirEvidencia(fila, 'documento')} /></td><td><MarcaEvidencia presente={fila.evidencia_completa} etiqueta="Evidencia completa" /></td><td><span className={`monitor-avance-evidencia ${fila.evidencia_completa ? 'completo' : ''}`}>{fila.evidencia_avance}%</span></td></tr>)}
-                {evidenciaFiltrada.length === 0 && <tr><td colSpan={8} className="tabla-vacia">No hay unidades que coincidan.</td></tr>}
-              </tbody></table></div>
+                {(resultadoEvidencia?.results || []).map((fila) => <tr key={fila.id}><td>{fila.clues}</td><td className="nombre">{fila.unidad}</td><td>{fila.entidad}</td><td><MarcaEvidencia presente={fila.evidencia_foto} etiqueta="Foto" onAbrir={() => abrirEvidencia(fila, 'imagen')} /></td><td><MarcaEvidencia presente={fila.evidencia_video} etiqueta="Video" onAbrir={() => abrirEvidencia(fila, 'video')} /></td><td><MarcaEvidencia presente={fila.evidencia_nota} etiqueta="Nota" onAbrir={() => abrirEvidencia(fila, 'documento')} /></td><td><MarcaEvidencia presente={fila.evidencia_completa} etiqueta="Evidencia completa" /></td><td><span className={`monitor-avance-evidencia ${fila.evidencia_completa ? 'completo' : ''}`}>{fila.evidencia_avance}%</span></td></tr>)}
+                {cargandoEvidencia && <tr><td colSpan={8} className="tabla-vacia">Cargando…</td></tr>}
+                {!cargandoEvidencia && resultadoEvidencia && resultadoEvidencia.results.length === 0 && <tr><td colSpan={8} className="tabla-vacia">No hay unidades que coincidan.</td></tr>}
+              </tbody></table>
+              {resultadoEvidencia && resultadoEvidencia.count > 0 && (
+                <div className="tfoot">
+                  <span>{numero(resultadoEvidencia.count)} unidades · página {paginaEvidencia} de {totalPaginasEvidencia}</span>
+                  <div className="pages">
+                    <button className="btn-ghost" disabled={!resultadoEvidencia.previous} onClick={() => setPaginaEvidencia((p) => p - 1)}>← Anterior</button>
+                    <button className="btn-ghost" disabled={!resultadoEvidencia.next} onClick={() => setPaginaEvidencia((p) => p + 1)}>Siguiente →</button>
+                  </div>
+                </div>
+              )}
+              </div>
             </Apartado>
 
           </div>

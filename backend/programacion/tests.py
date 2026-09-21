@@ -299,8 +299,15 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(nacional.data["resumen"]["avance_porcentaje"], 25.0)
 		self.assertEqual(nacional.data["resumen"]["entidades"], 2)
 		self.assertEqual(nacional.data["resumen"]["evidencia_foto"], 1)
+		self.assertNotIn("lista_clues", nacional.data)
+
+		# lista_clues se movio a un endpoint aparte, paginado -- monitoreo()
+		# ya no la trae.
+		detalle = self.client.get(f"/api/jornadas/{jornada_id}/monitoreo-detalle/?page_size=50")
+		self.assertEqual(detalle.status_code, status.HTTP_200_OK)
+		self.assertEqual(detalle.data["count"], 4)
 		fila_evidencia = next(
-			fila for fila in nacional.data["lista_clues"] if fila["clues"] == self.unidad_colima.clues
+			fila for fila in detalle.data["results"] if fila["clues"] == self.unidad_colima.clues
 		)
 		self.assertEqual(fila_evidencia["entidad_id"], self.colima.id)
 		self.assertIs(fila_evidencia["evidencia_foto"], True)
@@ -318,7 +325,6 @@ class PrecargaJornadaTests(APITestCase):
 		self.assertEqual(nacional.data["picking"]["fotos"], 2)
 		self.assertEqual(nacional.data["picking"]["dias_evidencia"], 2)
 		self.assertEqual(nacional.data["picking"]["avance_porcentaje"], 11.8)
-		self.assertEqual(len(nacional.data["lista_clues"]), 4)
 		self.assertEqual(len(nacional.data["filtros"]["entidades"]), 2)
 		jalisco = next(
 			fila for fila in nacional.data["entidades"] if fila["entidad"] == "Jalisco"
@@ -376,8 +382,10 @@ class PrecargaJornadaTests(APITestCase):
 
 		self.client.force_authenticate(self.usuario_colima)
 		entidad = self.client.get(f"/api/jornadas/{jornada_id}/monitoreo/")
+		entidad_detalle = self.client.get(f"/api/jornadas/{jornada_id}/monitoreo-detalle/")
 
 		self.assertEqual(entidad.status_code, status.HTTP_403_FORBIDDEN)
+		self.assertEqual(entidad_detalle.status_code, status.HTTP_403_FORBIDDEN)
 
 	def test_monitoreo_historico_agrupa_clues_programadas_por_entidad(self):
 		respuesta = self.crear_jornada()
