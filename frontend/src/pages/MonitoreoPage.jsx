@@ -234,7 +234,7 @@ export default function MonitoreoPage() {
   const [filtroLista, setFiltroLista] = useState(null);
   const [busquedaEvidencia, setBusquedaEvidencia] = useState('');
   const [busquedaEvidenciaDebounced, setBusquedaEvidenciaDebounced] = useState('');
-  const [apartadoAbierto, setApartadoAbierto] = useState('01');
+  const [apartadoAbierto, setApartadoAbierto] = useState(null);
   const [generandoChecklist, setGenerandoChecklist] = useState(false);
   const [vistaRapida, setVistaRapida] = useState(null);
   const [vistaPicking, setVistaPicking] = useState(null);
