@@ -336,7 +336,7 @@ export default function MonitoreoPage() {
 
   // "EVIDENCIA POR UNIDAD MEDICA": mismo criterio, solo mientras esta abierta.
   useEffect(() => {
-    if (!datos || apartadoAbierto !== '06') return;
+    if (!datos || apartadoAbierto !== '05') return;
     let cancelado = false;
     setCargandoEvidencia(true);
     const params = paramsEvidenciaDetalle(busquedaEvidenciaDebounced);
